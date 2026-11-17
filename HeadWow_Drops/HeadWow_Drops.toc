@@ -1,0 +1,9 @@
+## Interface: 16001
+## Title: HeadWow - Drop Data
+## Notes: Drop tables and NPC data for HeadWow. Loaded on demand.
+## Author: Laurids Kern
+## Version: @project-version@
+## Dependencies: HeadWow
+## LoadOnDemand: 1
+
+Generated\Data.xml

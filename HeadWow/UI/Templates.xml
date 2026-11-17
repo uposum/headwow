@@ -1,0 +1,177 @@
+<Ui xmlns="http://www.blizzard.com/wow/ui/">
+
+	<!-- Row in the Browse results list: an item or an NPC (icon or portrait, two lines of text) -->
+	<Button name="HeadWowResultRowTemplate" mixin="HeadWowResultRowMixin" virtual="true">
+		<Size y="36"/>
+		<Layers>
+			<Layer level="BACKGROUND">
+				<Texture parentKey="Selected" hidden="true">
+					<Color r="1" g="0.82" b="0" a="0.14"/>
+				</Texture>
+				<Texture parentKey="SelectedBar" hidden="true">
+					<Size x="2"/>
+					<Anchors>
+						<Anchor point="TOPLEFT"/>
+						<Anchor point="BOTTOMLEFT"/>
+					</Anchors>
+					<Color r="1" g="0.82" b="0" a="0.9"/>
+				</Texture>
+			</Layer>
+			<Layer level="ARTWORK">
+				<Texture parentKey="Icon">
+					<Size x="28" y="28"/>
+					<Anchors>
+						<Anchor point="LEFT" x="6" y="0"/>
+					</Anchors>
+				</Texture>
+				<FontString parentKey="Price" inherits="GameFontHighlightSmall" justifyH="RIGHT" wordwrap="false">
+					<Anchors>
+						<Anchor point="BOTTOMRIGHT" x="-6" y="5"/>
+					</Anchors>
+				</FontString>
+				<FontString parentKey="Name" inherits="GameFontNormal" justifyH="LEFT" wordwrap="false">
+					<Anchors>
+						<Anchor point="TOPLEFT" relativeKey="$parent.Icon" relativePoint="TOPRIGHT" x="8" y="-1"/>
+						<Anchor point="RIGHT" x="-6" y="0"/>
+					</Anchors>
+				</FontString>
+				<FontString parentKey="Info" inherits="GameFontDisableSmall" justifyH="LEFT" wordwrap="false">
+					<Anchors>
+						<Anchor point="BOTTOMLEFT" relativeKey="$parent.Icon" relativePoint="BOTTOMRIGHT" x="8" y="1"/>
+						<Anchor point="RIGHT" relativeKey="$parent.Price" relativePoint="LEFT" x="-6" y="0"/>
+					</Anchors>
+				</FontString>
+			</Layer>
+			<Layer level="OVERLAY">
+				<!-- wishlist star on the icon's corner -->
+				<Texture parentKey="Star" hidden="true">
+					<Size x="14" y="14"/>
+					<Anchors>
+						<Anchor point="TOPRIGHT" relativeKey="$parent.Icon" relativePoint="TOPRIGHT" x="4" y="4"/>
+					</Anchors>
+				</Texture>
+			</Layer>
+		</Layers>
+		<HighlightTexture>
+			<Color r="1" g="1" b="1" a="0.07"/>
+		</HighlightTexture>
+		<Scripts>
+			<OnLoad method="OnLoad"/>
+			<OnClick method="OnClick"/>
+			<OnEnter method="OnEnter"/>
+			<OnLeave method="OnLeave"/>
+		</Scripts>
+	</Button>
+
+	<!-- Row in any table (UI.CreateTable): the cells are made in Lua, one per column -->
+	<Button name="HeadWowTableRowTemplate" mixin="HeadWowTableRowMixin" virtual="true">
+		<Size y="24"/>
+		<Layers>
+			<Layer level="BACKGROUND">
+				<Texture parentKey="Stripe" setAllPoints="true" hidden="true">
+					<Color r="1" g="1" b="1" a="0.03"/>
+				</Texture>
+			</Layer>
+			<Layer level="ARTWORK">
+				<Texture parentKey="Icon" hidden="true">
+					<Size x="20" y="20"/>
+				</Texture>
+			</Layer>
+		</Layers>
+		<HighlightTexture>
+			<Color r="1" g="1" b="1" a="0.08"/>
+		</HighlightTexture>
+		<Scripts>
+			<OnLoad method="OnLoad"/>
+			<OnClick method="OnClick"/>
+			<OnEnter method="OnEnter"/>
+			<OnLeave method="OnLeave"/>
+		</Scripts>
+	</Button>
+
+	<!-- Tab strip sitting on top of an inset (item page, Items / NPCs switch) -->
+	<Frame name="HeadWowTopTabSystemTemplate" inherits="TabSystemTemplate" virtual="true">
+		<KeyValues>
+			<KeyValue key="tabTemplate" value="TabSystemTopButtonTemplate" type="string"/>
+			<KeyValue key="minTabWidth" value="70" type="number"/>
+			<KeyValue key="maxTabWidth" value="170" type="number"/>
+		</KeyValues>
+	</Frame>
+
+	<!-- World map pin: one per zone where the item drops -->
+	<Frame name="HeadWowMapPinTemplate" mixin="HeadWowMapPinMixin" enableMouse="true" virtual="true">
+		<Size x="31" y="31"/>
+		<Layers>
+			<Layer level="BACKGROUND">
+				<Texture file="Interface\Minimap\UI-Minimap-Background">
+					<Size x="20" y="20"/>
+					<Anchors>
+						<Anchor point="TOPLEFT" x="7" y="-5"/>
+					</Anchors>
+				</Texture>
+			</Layer>
+			<Layer level="ARTWORK">
+				<Texture parentKey="Icon">
+					<Size x="18" y="18"/>
+					<Anchors>
+						<Anchor point="TOPLEFT" x="7" y="-6"/>
+					</Anchors>
+				</Texture>
+				<MaskTexture parentKey="IconMask" file="Interface\CharacterFrame\TempPortraitAlphaMask" hWrapMode="CLAMPTOBLACKADDITIVE" vWrapMode="CLAMPTOBLACKADDITIVE">
+					<Anchors>
+						<Anchor point="TOPLEFT" relativeKey="$parent.Icon"/>
+						<Anchor point="BOTTOMRIGHT" relativeKey="$parent.Icon"/>
+					</Anchors>
+					<MaskedTextures>
+						<MaskedTexture childKey="Icon"/>
+					</MaskedTextures>
+				</MaskTexture>
+			</Layer>
+			<Layer level="OVERLAY">
+				<Texture parentKey="Border" file="Interface\Minimap\MiniMap-TrackingBorder">
+					<Size x="53" y="53"/>
+					<Anchors>
+						<Anchor point="TOPLEFT"/>
+					</Anchors>
+				</Texture>
+				<FontString parentKey="Count" inherits="NumberFontNormalSmall" justifyH="RIGHT">
+					<Anchors>
+						<Anchor point="BOTTOMRIGHT" x="2" y="-2"/>
+					</Anchors>
+				</FontString>
+			</Layer>
+			<Layer level="HIGHLIGHT">
+				<Texture file="Interface\Minimap\UI-Minimap-ZoomButton-Highlight" alphaMode="ADD">
+					<Size x="31" y="31"/>
+					<Anchors>
+						<Anchor point="CENTER"/>
+					</Anchors>
+				</Texture>
+			</Layer>
+		</Layers>
+		<!-- No OnLoad script: MapCanvas calls pin:OnLoad() itself when it creates the pin. -->
+	</Frame>
+
+	<!-- World map pin: one NPC spawn point (its portrait in a gold ring) -->
+	<Frame name="HeadWowSpawnPinTemplate" mixin="HeadWowSpawnPinMixin" enableMouse="true" virtual="true">
+		<Size x="18" y="18"/>
+		<Layers>
+			<Layer level="BACKGROUND">
+				<!-- tinted gold in HeadWowSpawnPinMixin:OnLoad -->
+				<Texture parentKey="Ring" file="Interface\CharacterFrame\TempPortraitAlphaMask" setAllPoints="true"/>
+			</Layer>
+			<Layer level="ARTWORK">
+				<Texture parentKey="Portrait">
+					<Size x="15" y="15"/>
+					<Anchors>
+						<Anchor point="CENTER"/>
+					</Anchors>
+				</Texture>
+			</Layer>
+			<Layer level="HIGHLIGHT">
+				<Texture file="Interface\CharacterFrame\TempPortraitAlphaMask" alphaMode="ADD" alpha="0.35" setAllPoints="true"/>
+			</Layer>
+		</Layers>
+	</Frame>
+
+</Ui>

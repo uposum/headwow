@@ -1,0 +1,5 @@
+<Bindings>
+	<Binding name="HEADWOW_TOGGLE" header="HEADWOW" category="ADDONS">
+		HeadWow:Toggle()
+	</Binding>
+</Bindings>

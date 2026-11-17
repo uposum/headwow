@@ -1,0 +1,32 @@
+## Interface: 16001
+## Title: HeadWow
+## Notes: Wowhead's WoW Forever database in game: items, NPCs, drop sources, where to farm, a wishlist and gold farming.
+## Author: Laurids Kern
+## Version: @project-version@
+## SavedVariables: HeadWowDB
+## OptionalDeps: OpenMap, Auctionator, EasyFind
+## IconTexture: Interface\Icons\INV_Misc_Book_09
+## AddonCompartmentFunc: HeadWow_OnAddonCompartmentClick
+## AddonCompartmentFuncOnEnter: HeadWow_OnAddonCompartmentEnter
+## AddonCompartmentFuncOnLeave: HeadWow_OnAddonCompartmentLeave
+
+Core.lua
+Data\Generated\Data.xml
+Search.lua
+NPC.lua
+Farm.lua
+Wishlist.lua
+GoldFarm.lua
+UI\Templates.xml
+UI\Widgets.lua
+UI\MainFrame.lua
+UI\BrowseView.lua
+UI\ItemView.lua
+UI\NpcView.lua
+UI\WishlistView.lua
+UI\GoldView.lua
+UI\Settings.lua
+UI\MinimapButton.lua
+Map.lua
+Integration.lua
+EasyFind.lua
