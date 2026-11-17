@@ -10,9 +10,9 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/lauridskern/headwow/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/lauridskern/headwow?label=release&sort=date"></a>
-  <a href="https://github.com/lauridskern/headwow/actions/workflows/release.yml"><img alt="Daily release" src="https://github.com/lauridskern/headwow/actions/workflows/release.yml/badge.svg"></a>
-  <a href="https://github.com/lauridskern/headwow/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/lauridskern/headwow/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/uposum/headwow/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/uposum/headwow?label=release&sort=date"></a>
+  <a href="https://github.com/uposum/headwow/actions/workflows/release.yml"><img alt="Daily release" src="https://github.com/uposum/headwow/actions/workflows/release.yml/badge.svg"></a>
+  <a href="https://github.com/uposum/headwow/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/uposum/headwow/actions/workflows/ci.yml/badge.svg"></a>
   <img alt="Interface 16001" src="https://img.shields.io/badge/interface-16001-blue">
 </p>
 
@@ -51,7 +51,7 @@ HeadWow works on its own; these addons make it better when they're installed:
 
 ## Install
 
-1. Download the zip from the [latest release](https://github.com/lauridskern/headwow/releases/latest).
+1. Download the zip from the [latest release](https://github.com/uposum/headwow/releases/latest).
 2. Extract it into `World of Warcraft/_forever_/Interface/AddOns/`. It holds two folders: `HeadWow` (the addon, items and NPCs) and `HeadWow_Drops` (the drop tables, loaded when first needed).
 3. Restart the game. Open HeadWow with `/hw`, the minimap button or the addon compartment.
 
@@ -79,7 +79,7 @@ flowchart LR
   C -- "convert, lint, test,<br/>package" --> D["GitHub release<br/>HeadWow-1.0.0-20261117.zip"]
 ```
 
-1. [wow-forever-scraper](https://github.com/lauridskern/wow-forever-scraper) scrapes Wowhead every day and commits the snapshot to the private `wow-forever-data` repo.
+1. [wow-forever-scraper](https://github.com/uposum/wow-forever-scraper) scrapes Wowhead every day and commits the snapshot to the private `wow-forever-data` repo.
 2. When it's done, it pings this repo (`repository_dispatch: data-updated`). A check every 6 hours catches a missed ping.
 3. The [Release workflow](.github/workflows/release.yml) compares the snapshot and `VERSION` with the latest release. If either changed, it converts the snapshot to Lua, lints and tests everything, packages both addons and publishes a release. Its notes show the counts and what changed since the last one: new items, NPCs and drop tables, and the addon's own commits.
 

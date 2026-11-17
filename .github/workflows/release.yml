@@ -12,7 +12,7 @@ name: Release
 # the marker at the end of its notes, see tools/release-notes.mjs), unless forced.
 #
 # Needs the secret DATA_DEPLOY_KEY: the private half of a read-only deploy key on
-# lauridskern/wow-forever-data (the data repo is private).
+# wow-forever-data, in the same account as this repo (the data repo is private).
 
 on:
   repository_dispatch:
@@ -37,7 +37,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  DATA_REPO: lauridskern/wow-forever-data
+  DATA_REPO: ${{ github.repository_owner }}/wow-forever-data # in the same account as this repo
 
 jobs:
   check:
