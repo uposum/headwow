@@ -52,7 +52,8 @@ const ROWS_PER_FILE = 4000; // keeps each chunk well below Lua's per-function co
 // (0.05%) up. The smaller ones are counted (leftOut) and the item page says so.
 const TOP_DROPS = 25;
 const MIN_DROP_BP = 5;
-const MAX_SOURCE_ROWS = 25; // per kind and item, best first (vendors: cheapest first)
+const MAX_SOURCE_ROWS = 25; // per kind and item, best first (vendors: cheapest first); skinning keeps every row,
+                            // since gold farming adds up what each mob gives
 
 const QUALITY = { Poor: 0, Common: 1, Uncommon: 2, Rare: 3, Epic: 4, Legendary: 5, Artifact: 6, Heirloom: 7 };
 const SOURCE_BITS = { Drop: 1, Vendor: 2, Quest: 4, Crafted: 8, Skinning: 16, Gathering: 32, Container: 64, Fishing: 128, Pickpocket: 256 };
@@ -203,8 +204,8 @@ function convertSchema2() {
 
     // Every other way to get it.
     const src = [];
-    const addLoot = (key, mapId) => {
-      for (const row of (page[key] ?? []).slice(0, MAX_SOURCE_ROWS)) {
+    const addLoot = (key, mapId, limit = MAX_SOURCE_ROWS) => {
+      for (const row of (page[key] ?? []).slice(0, limit)) {
         const id = mapId(row[0]);
         if (id === undefined) continue;
         src.push(KIND[key], id, bp(row[1]), row[2] ?? 0, Math.round((row[3] ?? 1) * 100));
@@ -214,7 +215,8 @@ function convertSchema2() {
       src.push(KIND.soldBy, row[0], row[1] ?? 0, row[2] ?? -1, row[3] ?? 1);
       npcUsed.add(row[0]);
     }
-    for (const key of ["skinnedFrom", "pickpocketedFrom"]) addLoot(key, (id) => (npcUsed.add(id), id));
+    addLoot("skinnedFrom", (id) => (npcUsed.add(id), id), Infinity);
+    addLoot("pickpocketedFrom", (id) => (npcUsed.add(id), id));
     for (const key of ["minedFrom", "gatheredFrom", "containedInObject"]) addLoot(key, (id) => (usedObjects.add(id), id));
     addLoot("fishedIn", zoneIdxOfArea);
     addLoot("containedInItem", (id) => id);
