@@ -1,0 +1,165 @@
+name: Release
+
+# Builds the addon with the latest data snapshot and publishes it as a GitHub release.
+#
+# When:
+#   - wow-forever-scraper pings this repo (repository_dispatch "data-updated") right after it
+#     commits a new snapshot to wow-forever-data: the daily release
+#   - every 6 hours, in case a ping went missing
+#   - VERSION changes on master (a new addon version)
+#   - by hand (Actions > Release > Run workflow), optionally forced
+# A run only builds when the snapshot or VERSION differs from the latest release's (read from
+# the marker at the end of its notes, see tools/release-notes.mjs), unless forced.
+#
+# Needs the secret DATA_DEPLOY_KEY: the private half of a read-only deploy key on
+# lauridskern/wow-forever-data (the data repo is private).
+
+on:
+  repository_dispatch:
+    types: [data-updated]
+  schedule:
+    - cron: "41 */6 * * *"
+  push:
+    branches: [master]
+    paths: [VERSION]
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Release even if neither the data nor VERSION changed
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  DATA_REPO: lauridskern/wow-forever-data
+
+jobs:
+  check:
+    name: Anything new?
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      release: ${{ steps.decide.outputs.release }}
+      data: ${{ steps.decide.outputs.data }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: VERSION
+          sparse-checkout-cone-mode: false
+
+      - name: Compare the latest snapshot and VERSION with the latest release
+        id: decide
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEPLOY_KEY: ${{ secrets.DATA_DEPLOY_KEY }}
+          FORCE: ${{ github.event_name == 'workflow_dispatch' && inputs.force }}
+        run: |
+          set -euo pipefail
+          if [ -z "$DEPLOY_KEY" ]; then
+            echo "::error::The secret DATA_DEPLOY_KEY is missing (a read-only deploy key on $DATA_REPO)."
+            exit 1
+          fi
+          key="$RUNNER_TEMP/data_key"
+          printf '%s\n' "$DEPLOY_KEY" > "$key"
+          chmod 600 "$key"
+          data=$(GIT_SSH_COMMAND="ssh -i $key -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new" \
+            git ls-remote "git@github.com:$DATA_REPO.git" HEAD | cut -f1)
+          rm -f "$key"
+          version=$(cat VERSION)
+          marker=$(gh release view --repo "$GITHUB_REPOSITORY" --json body --jq .body 2>/dev/null \
+            | grep -o '<!-- headwow-release {.*} -->' || true)
+          last_data=$(printf '%s' "$marker" | sed -n 's/.*"data":"\([0-9a-f]*\)".*/\1/p')
+          last_version=$(printf '%s' "$marker" | sed -n 's/.*"version":"\([^"]*\)".*/\1/p')
+          release=false
+          if [ "$FORCE" = "true" ] || [ "$data" != "$last_data" ] || [ "$version" != "$last_version" ]; then
+            release=true
+          fi
+          echo "snapshot $data (latest release: ${last_data:-none})"
+          echo "VERSION $version (latest release: ${last_version:-none})"
+          echo "release: $release"
+          echo "release=$release" >> "$GITHUB_OUTPUT"
+          echo "data=$data" >> "$GITHUB_OUTPUT"
+
+  release:
+    name: Build and publish
+    needs: check
+    if: needs.check.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the notes list the addon commits since the last release
+
+      - name: Check out the snapshot
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.DATA_REPO }}
+          ssh-key: ${{ secrets.DATA_DEPLOY_KEY }}
+          ref: ${{ needs.check.outputs.data }}
+          path: wow-forever-data
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Convert the snapshot to Lua
+        run: node tools/convert.mjs wow-forever-data . --stats build/stats.json
+
+      - name: Lint (addon and generated data)
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+      # VERSION plus the snapshot's date: 1.0.0-20261117 (a second release that day gets .2)
+      - name: Pick the version
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          date=$(TZ=UTC git -C wow-forever-data log -1 --format=%cd --date=format-local:%Y%m%d)
+          base="$(cat VERSION)-$date"
+          tag="v$base"
+          n=2
+          while gh release view "$tag" >/dev/null 2>&1; do
+            tag="v$base.$n"
+            n=$((n + 1))
+          done
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Package
+        run: node tools/package.mjs "${{ steps.version.outputs.version }}"
+
+      - name: Write the release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view --json body --jq .body > build/previous.md 2>/dev/null || : > build/previous.md
+          node tools/release-notes.mjs --version "${{ steps.version.outputs.version }}" \
+            --stats build/stats.json --data "${{ needs.check.outputs.data }}" \
+            --previous build/previous.md > build/notes.md
+          cat build/notes.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          gh release create "$TAG" "dist/HeadWow-$VERSION.zip" \
+            --title "HeadWow $VERSION" \
+            --notes-file build/notes.md \
+            --target "$GITHUB_SHA" \
+            --latest
