@@ -55,11 +55,16 @@ function Gold:ShowTooltip(e, row)
 	if e.kills > 0 then
 		GameTooltip_AddColoredDoubleLine(tooltip, "Kills recorded on Wowhead", BreakUpLargeNumbers(e.kills), NORMAL_FONT_COLOR, white)
 	end
+	if e.skinPerKill and e.skinPerKill > 0 then
+		GameTooltip_AddColoredDoubleLine(tooltip, "  of that from skinning", HW:FormatMoneyShort(e.skinPerKill), NORMAL_FONT_COLOR, white)
+	end
 	GameTooltip_AddBlankLineToTooltip(tooltip)
 	GameTooltip_AddNormalLine(tooltip, "Where the value comes from")
 	for _, top in ipairs(e.top) do
-		local left = ("|T%s:14:14|t %s"):format(HW:GetItemIcon(top.itemID), HW:GetColoredItemName(top.itemID))
-		local right = ("%s × %s%s = %s"):format(HW:FormatChance(top.chance), HW:FormatMoneyShort(top.value),
+		local left = ("|T%s:14:14|t %s%s"):format(HW:GetItemIcon(top.itemID), HW:GetColoredItemName(top.itemID),
+			top.skinned and " |cff808080(skinned)|r" or "")
+		local stack = top.stack and top.stack >= 1.05 and (" × %.1f"):format(top.stack) or ""
+		local right = ("%s%s × %s%s = %s"):format(HW:FormatChance(top.chance), stack, HW:FormatMoneyShort(top.value),
 			top.source == "ah" and " |cff808080AH|r" or "", HW:FormatMoneyShort(top.contrib))
 		GameTooltip_AddColoredDoubleLine(tooltip, left, right, white, white)
 		if top.source == "ah" and top.market then
@@ -108,6 +113,12 @@ function Gold:Create(content, toolbar)
 		function(on) HW.db.farmElites = on; Gold:Refresh() end)
 	ui.Elites:SetPoint("LEFT", price, "RIGHT", 10, 0)
 
+	ui.Skinning = UI.Checkbox(toolbar, "Skinning",
+		function() return HW.db.farmSkinning end,
+		function(on) HW.db.farmSkinning = on; Gold:Refresh() end,
+		"Count what skinning the mob gives (leather, hides, scales) in its value.")
+	ui.Skinning:SetPoint("LEFT", ui.Elites, "LEFT", UI.CheckboxWidth(ui.Elites) + 12, 0)
+
 	ui.Summary = toolbar:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
 	ui.Summary:SetPoint("RIGHT", -6, 0)
 	ui.Summary:SetJustifyH("RIGHT")
@@ -120,7 +131,7 @@ end
 
 function Gold:Refresh()
 	local db = HW.db
-	local opts = { below = db.farmBelow or 0, elites = db.farmElites, price = HW.GoldFarm:PriceMode() }
+	local opts = { below = db.farmBelow or 0, elites = db.farmElites, price = HW.GoldFarm:PriceMode(), skinning = db.farmSkinning }
 	local entries, unknownLevels = HW.GoldFarm:Build(opts)
 	local hasSpawns = HW:HasSpawnData()
 	local tbl = ui.Table
@@ -130,8 +141,8 @@ function Gold:Refresh()
 	end
 
 	local empty
-	if unknownLevels > 0 and not hasSpawns then
-		empty = "Mob levels are unknown without Questie.\nInstall it, or choose \"Any level\"."
+	if unknownLevels > 0 and #entries == 0 then
+		empty = "The levels of these mobs aren't known.\nChoose \"Any level\" to see them."
 	else
 		empty = "No mobs match. Try fewer levels below you."
 	end
@@ -139,11 +150,13 @@ function Gold:Refresh()
 
 	local prices = opts.price == "vendor" and "vendor sell price"
 		or "vendor price, or the AH median minus the 5% cut for items listed on most of your recent scan days"
-	local footer = "Per kill: drop chance × " .. prices .. ". "
+	local footer = "Per kill: drop chance × average stack × " .. prices .. ". "
 	footer = footer .. (hasSpawns
 		and ("Per clear: per kill × spawns in the mob's best camp (its densest " .. HW.CAMP_SIZE .. "-yard area).")
-		or "Install Questie for spawn points (camps, per clear).")
-	footer = footer .. "\nNot counted: coin, skinning, kill speed, respawn time. Loot tables come from item pages, so common junk may be missing."
+		or "No spawn points known, so no camps or per clear.")
+	footer = footer .. "\nNot counted: coin, kill speed, respawn time"
+		.. (opts.skinning and "." or ", skinning (tick Skinning to count it).")
+		.. " Drops under 0.05% beyond an item's 25 best sources aren't bundled."
 	tbl:SetFooter(footer)
 
 	local playerLevel = UnitLevel("player")
@@ -151,6 +164,7 @@ function Gold:Refresh()
 		and string.format("Level %d and below  ·  %d mobs", playerLevel - opts.below, #entries)
 		or string.format("%d mobs", #entries))
 	ui.Elites:Update()
+	ui.Skinning:Update()
 end
 
 function Gold:OnShow()

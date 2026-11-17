@@ -14,12 +14,20 @@ HW.ItemView = ItemView
 local VENDOR_BIT, QUEST_BIT, CRAFTED_BIT = 2, 4, 8
 local WEAPON, ARMOR = 2, 4
 local TOP_SPOTS, TOP_DROPPERS = 3, 4
+local SOURCE_TOOLTIP_LINES = 10
 local ICONS = {
 	vendor = "Interface\\Icons\\INV_Misc_Coin_01",
 	drop = "Interface\\Icons\\INV_Misc_Bag_10",
 	quest = "Interface\\Icons\\INV_Misc_Note_01",
 	crafted = "Interface\\Icons\\Trade_BlackSmithing",
 	zone = "Interface\\Icons\\INV_Misc_Map_01",
+	skinned = "Interface\\Icons\\INV_Misc_Pelt_Wolf_01",
+	pickpocketed = "Interface\\Icons\\INV_Misc_Bag_11",
+	mined = "Interface\\Icons\\Trade_Mining",
+	gathered = "Interface\\Icons\\Trade_Herbalism",
+	object = "Interface\\Icons\\INV_Box_01",
+	container = "Interface\\Icons\\INV_Misc_Bag_07",
+	fished = "Interface\\Icons\\Trade_Fishing",
 }
 
 local TAB_KEYS = {}                  -- tabID -> "overview" | "drops" | "farm"
@@ -99,9 +107,96 @@ local function CreateOverview(parent)
 	return page
 end
 
+-- One source entry as "name  ·  detail" for its tooltip line.
+local function SourceDetail(entry)
+	if entry.kind == 1 then
+		local price = entry.copper and entry.copper > 0 and GetMoneyString(entry.copper, true) or "other currency"
+		if (entry.stack or 1) > 1 then price = price .. " for " .. entry.stack end
+		if entry.stock and entry.stock > 0 then price = price .. ", limited stock (" .. entry.stock .. ")" end
+		return price
+	elseif entry.kind == 9 then
+		return entry.level and ("level " .. entry.level) or ""
+	elseif entry.kind == 10 then
+		return entry.learnedAt and ("skill " .. entry.learnedAt) or ""
+	end
+	local text = UI.ChanceText(entry.chance)
+	if (entry.stack or 1) >= 1.05 then text = text .. (" (×%.1f)"):format(entry.stack) end
+	return text
+end
+
+local function ZoneNames(zones, max)
+	local names = {}
+	for i, z in ipairs(zones or {}) do
+		if i > (max or 2) then break end
+		names[#names + 1] = HW:GetZoneName(z)
+	end
+	return table.concat(names, ", ")
+end
+
+-- A row per way to get the item (from its Wowhead page): the best entry, "and N more", and the
+-- rest in the tooltip. Vendors, skinning and pickpocketing open the NPC; containers the item.
+local function PageSourceRows(sources)
+	local rows = {}
+	for _, kind in ipairs(HW.SOURCE_KINDS) do
+		local list = sources[kind.key]
+		if list and #list > 0 then
+			local best = list[1]
+			local more = #list > 1 and (" |cff808080and " .. (#list - 1) .. " more|r") or ""
+			local zone = ZoneNames(best.zones, 1)
+			rows[#rows + 1] = {
+				icon = ICONS[kind.key],
+				text = kind.label .. " " .. best.name .. more,
+				value = (kind.kind == 1 or kind.kind == 9 or kind.kind == 10) and SourceDetail(best)
+					or (best.chance and UI.ChanceText(best.chance)) or zone,
+				onClick = (best.npcID and function(button, self)
+					if button == "RightButton" then HW:ShowNpcContextMenu(self, best.npcID, itemID) else HW:ShowNpc(best.npcID, itemID) end
+				end) or (best.itemID and function() HW:ShowItem(best.itemID) end) or nil,
+				onEnter = function(self)
+					GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+					GameTooltip_SetTitle(GameTooltip, kind.label)
+					for i, entry in ipairs(list) do
+						if i > SOURCE_TOOLTIP_LINES then
+							GameTooltip_AddDisabledLine(GameTooltip, "and " .. (#list - SOURCE_TOOLTIP_LINES) .. " more")
+							break
+						end
+						local where = ZoneNames(entry.zones, 2)
+						GameTooltip_AddColoredDoubleLine(GameTooltip, entry.name .. (where ~= "" and (" |cff808080" .. where .. "|r") or ""),
+							SourceDetail(entry), HIGHLIGHT_FONT_COLOR, HIGHLIGHT_FONT_COLOR)
+					end
+					if best.npcID then GameTooltip_AddInstructionLine(GameTooltip, "Click: " .. best.name .. "'s page") end
+					if best.itemID then GameTooltip_AddInstructionLine(GameTooltip, "Click: " .. best.name) end
+					GameTooltip:Show()
+				end,
+			}
+		end
+	end
+	return rows
+end
+
 local function SourceRows(row, drops)
 	local rows = {}
 	local mask = row[F.SOURCE] or 0
+	local sources = HW:GetSources(itemID)
+	local pageRows = PageSourceRows(sources)
+	if #pageRows > 0 then
+		-- the Wowhead page's tables, with the drop row first
+		if row[F.DROPS] then
+			local best = drops[1]
+			rows[1] = {
+				icon = ICONS.drop, text = "Dropped by " .. row[F.DROPS] .. " NPCs",
+				value = best and ("best " .. UI.ChanceText(best.chance)) or nil,
+				onClick = function() ui.Tabs:SetTab(TAB_IDS.drops, true) end,
+				onEnter = function(self)
+					GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+					GameTooltip_AddInstructionLine(GameTooltip, "Click: see them all")
+					GameTooltip:Show()
+				end,
+			}
+		end
+		for _, r in ipairs(pageRows) do rows[#rows + 1] = r end
+		return rows
+	end
+	-- no page tables in the snapshot: what the item listing says
 	if row[F.FROM] then
 		local vendor = bit.band(mask, VENDOR_BIT) ~= 0
 		rows[#rows + 1] = {
@@ -303,7 +398,7 @@ function ItemView:Create(host)
 	local map = UI.Button(view, "Show on map", function() HW.Map:ShowItem(itemID) end, 120)
 	map:SetPoint("RIGHT", link, "LEFT", -4, 0)
 	UI.SetTooltip(map, "Show on map", function(tip)
-		GameTooltip_AddNormalLine(tip, "Pins where the mobs that drop it stand (with Questie installed), ringed by drop chance.", true)
+		GameTooltip_AddNormalLine(tip, "Pins where the mobs that drop it stand, ringed by drop chance.", true)
 	end)
 	ui.MapButton = map
 
@@ -423,7 +518,7 @@ function ItemView:Refresh()
 	-- Dropped by
 	ui.Drops:SetData(drops, "No drop data for this item.")
 	ui.Drops:SetFooter(truncated > 0
-		and string.format("%d sources here, %d more on Wowhead that the snapshot doesn't include.", #drops, truncated)
+		and string.format("%d sources here; %d more with chances under 0.05%% aren't bundled. Kills: how often Wowhead users looted the NPC.", #drops, truncated)
 		or (#drops > 0 and string.format("%d sources. Kills: how often Wowhead users looted the NPC.", #drops) or ""))
 
 	-- Where to farm
@@ -431,7 +526,7 @@ function ItemView:Refresh()
 	ui.Farm:SetFooter(HW:HasSpawnData()
 		and ("Per clear: drops to expect from killing every spawn in the zone's best camp (its densest "
 			.. HW.CAMP_SIZE .. "-yard area) once. Click a zone to see it on the map.")
-		or "Install Questie for spawn points; without them each NPC counts once, so zones rank by drop chance.")
+		or "No spawn points known for these NPCs: each counts once, so zones rank by drop chance.")
 
 	-- Tabs: the one you used last when this item has it, else the Overview
 	local tabs = ui.Tabs

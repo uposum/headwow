@@ -5,6 +5,7 @@ local failures, passed = {}, 0
 
 local function step(name, fn, ...)
 	local ok, err = xpcall(fn, debug.traceback, ...)
+	if SMOKE_TRACE and name:find(SMOKE_TRACE) then REAL_PRINT("STEP " .. name) end
 	if ok then
 		passed = passed + 1
 	else
@@ -133,6 +134,16 @@ ClickRows("gold", "RightButton", 2)
 ClickRows("gold", "LeftButton", 1)
 step("gold, no level filter", function() HW.db.farmBelow = 0; HW:ShowGoldFarm() end)
 Poke("gold any level")
+step("gold, with skinning", function() HW.db.farmSkinning = true; HW:ShowGoldFarm() end)
+Poke("gold with skinning")
+
+-- Every other way to get an item (vendor, skinning, mining, quest, ...)
+step("item with every source", function() HW:ShowItem(100) end)
+Poke("item 100 sources")
+step("item with vendor, quest, recipe", function() HW:ShowItem(104) end)
+Poke("item 104 sources")
+step("snapshot spawns on the NPC page", function() HW:ShowNpc(2) end)
+Poke("npc 2")
 
 -- History
 for i = 1, 6 do step("back " .. i, function() HW:NavigateHistory(-1) end) end

@@ -1,12 +1,13 @@
 -- Gold farming: mobs ranked by what their drops sell for.
 --
---   per kill  = sum over the mob's drops of drop chance x item value
+--   per kill  = sum over the mob's drops of drop chance x average stack x item value
+--               (plus, with skinning on, the same over what skinning it gives)
 --   per clear = per kill x the mob's spawns in its best camp: the densest ~225-yard area of
---               its spawn points (QuestieDB), what one farming loop covers, not the whole zone
+--               its spawn points, what one farming loop covers, not the whole zone
 --
 -- An item's value is its vendor price, or its AH price minus the AH cut when its market looks
 -- real: listed on most of your recent scan days and still listed lately (HW:GetMarket). Coin,
--- skinning, kill speed and respawn times aren't in any data HeadWow has, so they're left out.
+-- kill speed and respawn times aren't in any data HeadWow has, so they're left out.
 
 local HW = HeadWow
 local F = HW.F
@@ -60,16 +61,27 @@ end
 
 -- Returns a list of mobs worth farming under the options, and whether any mob was left out
 -- because its level is unknown. opts: { below = levels under the player (0: any), elites,
--- price = a PRICE_MODES key }. Each entry: { npcID, name, minLevel, maxLevel, rank, perKill,
--- top = { itemID, chance, value, source, contrib }, kills, mapID, zone, spawns, perClear }.
+-- price = a PRICE_MODES key, skinning = count what skinning gives }. Each entry: { npcID,
+-- name, minLevel, maxLevel, rank, perKill, skinPerKill, top = { itemID, chance, stack, value,
+-- source, contrib, skinned }, kills, mapID, zone, spawns, perClear }.
 function GF:Build(opts)
 	local list, unknownLevels = {}, 0
 	local index = HW:GetLootIndex()
 	if not index then return list, unknownLevels end
+	local skins = opts.skinning and HW:GetSkinningIndex() or nil
 	local ceiling = opts.below > 0 and (UnitLevel("player") - opts.below) or nil
 	local cache = {}
 
-	for npcID, loot in pairs(index) do
+	for npcID, drops in pairs(index) do
+		local loot = drops
+		local skinLoot = skins and skins[npcID]
+		if skinLoot then
+			loot = {}
+			for _, entry in ipairs(drops) do loot[#loot + 1] = entry end
+			for _, entry in ipairs(skinLoot) do
+				loot[#loot + 1] = { itemID = entry.itemID, chance = entry.chance, samples = 0, stack = entry.stack, skinned = true }
+			end
+		end
 		local minLevel, maxLevel, rank = HW:GetNpcLevel(npcID)
 		local keep = true
 		if ceiling then
@@ -83,23 +95,25 @@ function GF:Build(opts)
 		if keep and not opts.elites and rank and rank ~= 0 then keep = false end
 
 		if keep then
-			local perKill, top, kills, ignored = 0, {}, 0, {}
+			local perKill, skinPerKill, top, kills, ignored = 0, 0, {}, 0, {}
 			for _, entry in ipairs(loot) do
 				if entry.chance and entry.chance > 0 then
+					local stack = entry.stack or 1
 					local value, source, market = self:ItemValue(entry.itemID, opts.price, cache)
 					if value > 0 then
-						local contrib = entry.chance / 100 * value
+						local contrib = entry.chance / 100 * stack * value
 						perKill = perKill + contrib
+						if entry.skinned then skinPerKill = skinPerKill + contrib end
 						top[#top + 1] = {
-							itemID = entry.itemID, chance = entry.chance, value = value, source = source,
-							contrib = contrib, market = market,
+							itemID = entry.itemID, chance = entry.chance, stack = stack, value = value, source = source,
+							contrib = contrib, market = market, skinned = entry.skinned,
 						}
 					end
 					-- an AH price left out because its market doesn't look real, worth saying so
 					if market and not market.reliable and market.price * AH_CUT > value then
 						ignored[#ignored + 1] = {
 							itemID = entry.itemID, chance = entry.chance, market = market,
-							would = entry.chance / 100 * market.price * AH_CUT,
+							would = entry.chance / 100 * stack * market.price * AH_CUT,
 						}
 					end
 				end
@@ -119,7 +133,7 @@ function GF:Build(opts)
 				list[#list + 1] = {
 					npcID = npcID, name = HW:GetNpcName(npcID),
 					minLevel = minLevel, maxLevel = maxLevel, rank = rank,
-					perKill = perKill, top = top, kills = kills, ignored = ignored,
+					perKill = perKill, skinPerKill = skinPerKill, top = top, kills = kills, ignored = ignored,
 					mapID = mapID, zone = zone, spawns = spawns, zoneSpawns = zoneSpawns,
 					campX = campX, campY = campY,
 					perClear = spawns and perKill * spawns or nil,

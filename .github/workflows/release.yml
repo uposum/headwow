@@ -11,6 +11,9 @@ name: Release
 # A run only builds when the snapshot or VERSION differs from the latest release's (read from
 # the marker at the end of its notes, see tools/release-notes.mjs), unless forced.
 #
+# Before publishing, tools/check-release.mjs compares the counts with the latest release's and
+# stops a release whose data shrank (force skips that too).
+#
 # Needs the secret DATA_DEPLOY_KEY: the private half of a read-only deploy key on
 # wow-forever-data, in the same account as this repo (the data repo is private).
 
@@ -31,6 +34,7 @@ on:
 
 permissions:
   contents: write
+  actions: write # the keepalive, see the check job
 
 concurrency:
   group: release
@@ -86,6 +90,23 @@ jobs:
           echo "release=$release" >> "$GITHUB_OUTPUT"
           echo "data=$data" >> "$GITHUB_OUTPUT"
 
+      # GitHub disables scheduled workflows in a public repo after 60 days without activity,
+      # and releases aren't commits. Re-enable this one on every scheduled check, and add an
+      # empty commit if master had none for 45 days.
+      - name: Keepalive
+        if: github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api -X PUT "repos/$GITHUB_REPOSITORY/actions/workflows/release.yml/enable" || true
+          last=$(git log -1 --format=%ct)
+          if [ $(( $(date +%s) - last )) -gt $(( 45 * 86400 )) ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit --allow-empty -q -m "keepalive: no commits for 45 days"
+            git push || echo "::warning::keepalive commit couldn't be pushed"
+          fi
+
   release:
     name: Build and publish
     needs: check
@@ -120,6 +141,14 @@ jobs:
 
       - name: Test
         run: npm test
+
+      - name: Check the counts against the latest release
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.force) }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view --json body --jq .body > build/previous.md 2>/dev/null || : > build/previous.md
+          node tools/check-release.mjs build/stats.json build/previous.md
 
       # VERSION plus the snapshot's date: 1.0.0-20261117 (a second release that day gets .2)
       - name: Pick the version

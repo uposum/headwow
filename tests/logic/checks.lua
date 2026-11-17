@@ -99,15 +99,24 @@ Auctionator = { API = { v1 = { GetAuctionPriceByItemID = function(_, item) retur
 local gold = HW.GoldFarm:Build({ below = 0, elites = false, price = "best" })
 local byId = {}
 for _, e in ipairs(gold) do byId[e.npcID] = e end
--- wolf: plate 0.5% x 5000 = 25 + junk 40% x 300 = 120 + shield 2% x (10000 x 0.95) = 190 = 335
-check(math.abs(byId[1].perKill - 335) < 1e-6, "wolf per kill 335c with the AH shield (5% cut)")
-check(byId[1].spawns == 3 and math.abs(byId[1].perClear - 1005) < 1e-6, "wolf per clear = camp of 3")
+-- wolf: plate 0.5% x 5000 = 25 + junk 40% x 2 a drop x 300 = 240 + shield 2% x (10000 x 0.95) = 190 = 455
+check(math.abs(byId[1].perKill - 455) < 1e-6, "wolf per kill 455c: 2 junk a drop, the AH shield (5% cut)")
+check(byId[1].spawns == 3 and math.abs(byId[1].perClear - 1365) < 1e-6, "wolf per clear = camp of 3")
 check(byId[3].spawns == 7 and byId[3].zoneSpawns == 10, "raptor camp 7 of 10")
-check(byId[1].top[1].itemID == 103 and byId[1].top[1].source == "ah", "the shield is the top contributor, from the AH")
+check(byId[1].top[1].itemID == 200 and byId[1].top[1].stack == 2, "the junk (2 a drop) is the top contributor")
+check(byId[1].top[2].itemID == 103 and byId[1].top[2].source == "ah", "then the shield, from the AH")
 check(byId[1].kills == 1000, "kills recorded = max samples")
 check(math.abs(byId[2].perKill - 50) < 1e-6, "bear per kill 50c")
 for _, e in ipairs(HW.GoldFarm:Build({ below = 0, elites = false, price = "vendor" })) do
-	if e.npcID == 1 then check(math.abs(e.perKill - (25 + 120 + 40)) < 1e-6, "vendor mode: the shield at its 2000c vendor price") end
+	if e.npcID == 1 then check(math.abs(e.perKill - (25 + 240 + 40)) < 1e-6, "vendor mode: the shield at its 2000c vendor price") end
+end
+-- skinning: the bear gives the cloak (400c) 50% of the time, 1.5 at a time: +300
+HeadWowData.items[104][7] = 400
+for _, e in ipairs(HW.GoldFarm:Build({ below = 0, elites = false, price = "best", skinning = true })) do
+	if e.npcID == 2 then
+		check(math.abs(e.perKill - 350) < 1e-6 and math.abs(e.skinPerKill - 300) < 1e-6, "bear with skinning: 50 + 300")
+		check(e.top[1].itemID == 104 and e.top[1].skinned, "the skinned cloak is the bear's top contributor")
+	end
 end
 -- level filter: player 60, 10 below -> level 50 and under: wolf (50-52) out, raptor and ghost in
 local below = {}
@@ -154,6 +163,28 @@ for _, e in ipairs(HW.GoldFarm:Build({ below = 0, elites = false, price = "best"
 			"bear: the plate's lone 10g listing ignored, vendor price used")
 	end
 end
+
+-- The snapshot's own NPC data, ahead of QuestieDB's
+local minL, maxL, rank = HW:GetNpcLevel(4)
+check(minL == 33 and maxL == 34 and rank == 0, "the snapshot's level (33-34) beats QuestieDB's (30-31)")
+minL, maxL, rank = HW:GetNpcLevel(99)
+check(minL == -1 and rank == 3 and HW:FormatNpcLevel(99) == "?? Boss", "a ?? boss from the snapshot")
+check(HW:GetNpcLevel(1) == 50, "QuestieDB's level where the snapshot has none")
+check(HW:GetNpcSubName(5) == "Cloak Seller", "the snapshot's NPC title")
+local spawns = HW:GetNpcSpawns(5)
+check(spawns and #spawns == 1 and spawns[1].mapID == 1448 and spawns[1].name == "Felwood" and spawns[1].count == 2,
+	"the snapshot's spawns, on the game's map ID")
+check(spawns and math.abs(spawns[1].points[2][1] - 0.41) < 1e-9 and math.abs(spawns[1].points[2][2] - 0.615) < 1e-9,
+	"spawn points unpacked to 0..1")
+check(HW:GetNpcSpawns(1)[1].areaID == 361, "QuestieDB's spawns where the snapshot has none")
+check(HW:GetDrops(200)[1].stack == 2 and HW:GetDrops(100)[1].stack == 1, "drop stacks")
+local src = HW:GetSources(104)
+check(src.vendor and src.vendor[1].name == "Vendor Bob" and src.vendor[1].copper == 300 and src.vendor[1].stock == -1,
+	"sold by Bob for 3s, unlimited")
+check(src.skinned and src.skinned[1].npcID == 2 and src.skinned[1].chance == 50 and src.skinned[1].stack == 1.5,
+	"skinned from the bear, 50%, 1.5 at a time")
+check(src.quest and src.quest[1].name == "Cloak Quest" and src.quest[1].level == 60, "reward of the cloak quest")
+check(next(HW:GetSources(100)) == nil, "no other sources for the plate")
 
 for _, msg in ipairs(failed) do print("FAIL " .. msg) end
 print(("logic: %d checks passed, %d failed"):format(passed, #failed))

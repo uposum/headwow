@@ -48,7 +48,8 @@ local LOOT_SPEC = {
 		if e.contrib and e.contrib > 0 then
 			GameTooltip_AddBlankLineToTooltip(GameTooltip)
 			GameTooltip_AddColoredDoubleLine(GameTooltip, "Per kill (HeadWow)",
-				("%s × %s%s"):format(HW:FormatChance(e.chance), HW:FormatMoneyShort(e.value), e.source == "ah" and " AH" or ""),
+				("%s%s × %s%s"):format(HW:FormatChance(e.chance), (e.stack or 1) >= 1.05 and (" × %.1f"):format(e.stack) or "",
+					HW:FormatMoneyShort(e.value), e.source == "ah" and " AH" or ""),
 				NORMAL_FONT_COLOR, HIGHLIGHT_FONT_COLOR)
 		end
 		GameTooltip:Show()
@@ -137,7 +138,7 @@ function NpcView:Create(host)
 	local map = UI.Button(view, "Show on map", function() HW.Map:ShowNpc(npcID, ui.campMapID) end, 120)
 	map:SetPoint("RIGHT", wowhead, "LEFT", -4, 0)
 	UI.SetTooltip(map, "Show on map", function(tip)
-		GameTooltip_AddNormalLine(tip, "Pins every spawn point (from QuestieDB), framed on its best camp's zone.", true)
+		GameTooltip_AddNormalLine(tip, "Pins every spawn point, framed on its best camp's zone.", true)
 	end)
 	ui.MapButton = map
 	local back = UI.Button(view, "", function() if fromItemID then HW:ShowItem(fromItemID) end end, 220)
@@ -167,7 +168,7 @@ end
 -- Filling
 ---------------------------------------------------------------------------
 
--- Location rows: zones with their spawn counts (QuestieDB), else the snapshot's zone names.
+-- Location rows: zones with their spawn counts (the snapshot's or QuestieDB's), else the snapshot's zone names.
 -- Returns the rows and the mapID of the best camp (nil without spawn points).
 local function LocationRows(id)
 	local rows, campMapID = {}, nil
@@ -261,7 +262,7 @@ function NpcView:Refresh()
 		if entry.chance and entry.chance > 0 then
 			local value, source = HW.GoldFarm:ItemValue(entry.itemID, mode, cache)
 			entry.value, entry.source = value, source
-			entry.contrib = entry.chance / 100 * value
+			entry.contrib = entry.chance / 100 * (entry.stack or 1) * value
 			perKill = perKill + entry.contrib
 		end
 	end
@@ -272,7 +273,7 @@ function NpcView:Refresh()
 
 	ui.Loot:SetData(loot, "No known loot for this NPC.")
 	ui.Loot:SetFooter(#loot > 0
-		and "From the item drop tables, so items whose table was cut short may be missing. Per kill: chance × vendor or steady AH price."
+		and "From the item drop tables (drops under 0.05% beyond an item's 25 best sources aren't bundled). Per kill: chance × average stack × vendor or steady AH price."
 		or "")
 
 	local rows, campMapID = LocationRows(npcID)

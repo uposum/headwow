@@ -29,6 +29,7 @@ UnitLevel = function() return PLAYER_LEVEL end
 UnitGUID = function() return "Player-1-ABC" end
 C_Map = {
 	GetAreaInfo = function(id) return ({ [361] = "Felwood", [16] = "Azshara", [17] = "The Barrens" })[id] end,
+	GetMapInfo = function(id) local name = ({ [1448] = "Felwood", [1447] = "Azshara", [1413] = "The Barrens" })[id]; return name and { name = name, mapType = 3 } end,
 }
 LOOT_ITEM_SELF = "You receive loot: %s."
 LOOT_ITEM_SELF_MULTIPLE = "You receive loot: %sx%d."

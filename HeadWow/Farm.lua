@@ -1,9 +1,9 @@
--- Where to farm an item: its drop sources with their spawn points (QuestieDB), and the zones
+-- Where to farm an item: its drop sources with their spawn points (the snapshot's, else QuestieDB's), and the zones
 -- ranked by how many drops to expect from one clear of the zone's best camp: the densest
 -- ~225-yard area (HW:FindCamp) of spawns of every NPC that drops it, each spawn counting its
 -- drop chance. Not the whole zone: nobody clears a few hundred spawns spread across it.
 --
--- Without spawn points for an NPC (no QuestieDB, or an NPC it doesn't know) the NPC counts as
+-- Without spawn points for an NPC (neither the snapshot nor QuestieDB has them) the NPC counts as
 -- a single spawn in each of its snapshot zones, and the spot is marked as a guess.
 
 local HW = HeadWow

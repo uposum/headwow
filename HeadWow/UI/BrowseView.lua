@@ -184,7 +184,7 @@ local function SetupFilterMenu(_, root)
 		"Body armor of your class's type: plate for warriors and paladins, mail for hunters and shamans (one type lighter before level 40), leather for rogues and druids, cloth for casters. Cloaks, rings and other gear are kept.")
 	Toggle("levelUsable", "Usable at my level", "Items whose required level you have reached.")
 	Toggle("npcLevel", "NPCs near my level",
-		"NPCs within 5 levels of yours. NPCs with an unknown level (Questie not installed) are left out.")
+		"NPCs within 5 levels of yours. NPCs whose level isn't known are left out.")
 
 	root:CreateDivider()
 	root:CreateCheckbox("Has drop sources",

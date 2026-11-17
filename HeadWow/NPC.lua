@@ -47,9 +47,9 @@ function HW:GetNpcZoneText(npcID, max)
 end
 
 ---------------------------------------------------------------------------
--- Levels (not in the snapshot): QuestieDB's public API (LibQuestieDB, installed with Questie)
--- when it's there, else the game's own tooltip data for the creature, which it has once the
--- creature has been seen.
+-- Levels: the snapshot's (from the NPC's Wowhead page), else QuestieDB's public API
+-- (LibQuestieDB, installed with Questie), else the game's own tooltip data for the creature,
+-- which it has once the creature has been seen.
 ---------------------------------------------------------------------------
 
 local RANK_TEXT = { [1] = "Elite", [2] = "Rare Elite", [3] = "Boss", [4] = "Rare" }
@@ -90,12 +90,20 @@ local function LevelFromTooltip(npcID)
 	end
 end
 
+-- npcLevels[id] = minLevel * 10000 + maxLevel * 10 + rank, or just rank for a "??" boss.
+local function LevelFromSnapshot(npcID)
+	local packed = Data.npcLevels[npcID]
+	if not packed then return end
+	if packed < 10 then return { -1, -1, packed } end
+	return { math.floor(packed / 10000), math.floor(packed / 10) % 1000, packed % 10 }
+end
+
 -- Returns minLevel, maxLevel, rank (0 normal, 1 elite, 2 rare elite, 3 boss, 4 rare), or nil.
 -- minLevel is -1 for "??".
 function HW:GetNpcLevel(npcID)
 	local cached = levelCache[npcID]
 	if not cached then
-		cached = LevelFromQuestie(npcID) or LevelFromTooltip(npcID)
+		cached = LevelFromSnapshot(npcID) or LevelFromQuestie(npcID) or LevelFromTooltip(npcID)
 		if not cached then return nil end
 		levelCache[npcID] = cached
 	end
@@ -123,21 +131,54 @@ function HW:GetNpcSortLevel(npcID)
 end
 
 ---------------------------------------------------------------------------
--- Spawns (QuestieDB): where the NPC stands, by zone
+-- Spawns: where the NPC stands, by zone. The snapshot's (from the NPC's Wowhead page, on the
+-- game's own map IDs), else QuestieDB's.
 ---------------------------------------------------------------------------
 
--- The NPC's title ("Weapon Vendor"), from QuestieDB, or nil.
+-- The NPC's title ("Weapon Vendor"), from the snapshot or QuestieDB, or nil.
 function HW:GetNpcSubName(npcID)
+	local tag = Data.npcTags[npcID]
+	if tag then return tag end
 	local db = NpcDB()
 	if not db then return end
 	local ok, subName = pcall(db.Get, npcID, "subName")
 	if ok and type(subName) == "string" and subName ~= "" then return subName end
 end
 
+-- spawns[npcID] = { uiMapID, count, x*10 * 1000 + y*10, ..., uiMapID, count, ... }
+local function SpawnsFromSnapshot(npcID)
+	if not HW:EnsureDrops() then return end
+	local raw = Data.spawns[npcID]
+	if not raw then return end
+	local out = {}
+	local i = 1
+	while i <= #raw do
+		local mapID, count = raw[i], raw[i + 1]
+		local points = {}
+		for p = i + 2, i + 1 + count do
+			local packed = raw[p]
+			points[#points + 1] = { math.floor(packed / 1000) / 1000, (packed % 1000) / 1000 }
+		end
+		local info = C_Map.GetMapInfo and C_Map.GetMapInfo(mapID)
+		out[#out + 1] = { mapID = mapID, name = info and info.name or ("Map " .. mapID), points = points, count = count }
+		i = i + 2 + count
+	end
+	return out
+end
+
 -- Returns a list of { areaID, name, mapID, points = { {x, y}, ... } (0..1 on mapID), count },
--- most spawns first, or nil when QuestieDB doesn't know the NPC. mapID is nil for an area
--- without a world map (some instances); points is empty where the spawns have no position.
+-- most spawns first, or nil when neither the snapshot nor QuestieDB knows the NPC's spawns.
+-- mapID is nil for an area without a world map (some instances; QuestieDB only); points is
+-- empty where the spawns have no position. areaID is set for QuestieDB's spawns only.
 function HW:GetNpcSpawns(npcID)
+	local fromSnapshot = SpawnsFromSnapshot(npcID)
+	if fromSnapshot then
+		table.sort(fromSnapshot, function(a, b)
+			if a.count ~= b.count then return a.count > b.count end
+			return a.name < b.name
+		end)
+		return fromSnapshot
+	end
 	local db = NpcDB()
 	if not db then return end
 	local ok, spawns = pcall(db.Get, npcID, "spawns")
@@ -164,8 +205,10 @@ function HW:GetNpcSpawns(npcID)
 	return out
 end
 
+-- Whether any spawn points are known: the snapshot's or QuestieDB's.
 function HW:HasSpawnData()
-	return NpcDB() ~= nil
+	if NpcDB() ~= nil then return true end
+	return self:EnsureDrops() and next(Data.spawns) ~= nil
 end
 
 ---------------------------------------------------------------------------
@@ -272,7 +315,7 @@ function HW:GetNpcSpawnZones(npcID)
 	end
 	local spawns = self:GetNpcSpawns(npcID)
 	if not spawns then
-		if NpcDB() then spawnZoneCache[npcID] = false end -- known to have none
+		if self:HasSpawnData() then spawnZoneCache[npcID] = false end -- known to have none
 		return
 	end
 	local zones, total = {}, 0
@@ -294,23 +337,51 @@ function HW:GetNpcSpawnZones(npcID)
 	return zones, total
 end
 
--- npcID -> list of { itemID, chance, samples }, built from the item drop tables on first use.
--- Only as complete as those tables: an item whose Wowhead table was truncated may be missing.
+-- npcID -> list of { itemID, chance, samples, stack }, built from the item drop tables on first
+-- use. Drops under 0.05% beyond an item's 25 best sources aren't bundled, so they're missing.
 local lootIndex
 
 local function BuildLootIndex()
 	lootIndex = {}
+	local stride = HW.DROP_STRIDE
 	for itemID, raw in pairs(Data.drops) do
-		for i = 2, #raw, 3 do
-			local npcID, bp, samples = raw[i], raw[i + 1], raw[i + 2]
+		for i = 2, #raw, stride do
+			local npcID, bp, samples, stack = raw[i], raw[i + 1], raw[i + 2], raw[i + 3]
 			local list = lootIndex[npcID]
 			if not list then
 				list = {}
 				lootIndex[npcID] = list
 			end
-			list[#list + 1] = { itemID = itemID, chance = bp >= 0 and bp / 100 or nil, samples = samples }
+			list[#list + 1] = { itemID = itemID, chance = bp >= 0 and bp / 100 or nil, samples = samples, stack = (stack or 100) / 100 }
 		end
 	end
+end
+
+-- npcID -> list of { itemID, chance, samples, stack }: what skinning the NPC gives, from the
+-- items' "skinned from" tables. Nil without the drop data.
+local skinIndex
+local SKINNED = 2
+
+function HW:GetSkinningIndex()
+	if not self:EnsureDrops() then return nil end
+	if not skinIndex then
+		skinIndex = {}
+		local stride = HW.SOURCE_STRIDE
+		for itemID, raw in pairs(Data.sources) do
+			for i = 1, #raw, stride do
+				if raw[i] == SKINNED then
+					local npcID, bp, samples, stack = raw[i + 1], raw[i + 2], raw[i + 3], raw[i + 4]
+					local list = skinIndex[npcID]
+					if not list then
+						list = {}
+						skinIndex[npcID] = list
+					end
+					list[#list + 1] = { itemID = itemID, chance = bp >= 0 and bp / 100 or nil, samples = samples, stack = (stack or 100) / 100 }
+				end
+			end
+		end
+	end
+	return skinIndex
 end
 
 -- The whole index (npcID -> entries), for passes over every NPC; nil without drop data.
@@ -326,7 +397,7 @@ function HW:GetNpcLoot(npcID)
 	if not lootIndex then BuildLootIndex() end
 	local out = {}
 	for i, entry in ipairs(lootIndex[npcID] or {}) do
-		out[i] = { itemID = entry.itemID, chance = entry.chance, samples = entry.samples }
+		out[i] = { itemID = entry.itemID, chance = entry.chance, samples = entry.samples, stack = entry.stack }
 	end
 	return out
 end

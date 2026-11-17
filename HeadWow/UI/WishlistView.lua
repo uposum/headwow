@@ -76,7 +76,7 @@ function Wishlist:Create(content, toolbar)
 	ui.MapBox = UI.Checkbox(toolbar, "Show their mobs on the map",
 		function() return HW.db.wishMap end,
 		function(on) HW.Map:SetWishPinsShown(on) end,
-		"Pins every spawn of the mobs that drop a wishlist item (pink rings). Needs Questie for spawn points.")
+		"Pins every spawn of the mobs that drop a wishlist item (pink rings).")
 	ui.MapBox:SetPoint("LEFT", 4, 0)
 
 	ui.AlertBox = UI.Checkbox(toolbar, "Announce drops",

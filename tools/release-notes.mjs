@@ -71,7 +71,8 @@ const changes = addonChanges(previous?.code);
 
 const lines = [];
 lines.push(`Built with the Wowhead snapshot of **${snapshotText(stats.snapshot)}**.`, "");
-const rows = [["Items", "items"], ["NPCs", "npcs"], ["Drop tables", "drops"]];
+const rows = [["Items", "items"], ["NPCs", "npcs"], ["Drop tables", "drops"], ["Items with other sources", "sources"], ["NPCs with spawn points", "spawns"]]
+  .filter(([, key]) => typeof stats[key] === "number");
 if (previous) {
   lines.push("| | Count | Since the last release |", "|---|---:|---:|");
   for (const [label, key] of rows) lines.push(`| ${label} | ${number(stats[key])} | ${delta(stats[key], previous[key])} |`);
@@ -93,6 +94,6 @@ lines.push("2. Extract it into `World of Warcraft/_forever_/Interface/AddOns/`. 
 lines.push("3. Restart the game (a `/reload` doesn't pick up new files).");
 lines.push("");
 
-const marker = { version: addonVersion, data, code, items: stats.items, npcs: stats.npcs, drops: stats.drops };
+const marker = { version: addonVersion, data, code, items: stats.items, npcs: stats.npcs, drops: stats.drops, sources: stats.sources, spawns: stats.spawns };
 lines.push(`<!-- headwow-release ${JSON.stringify(marker)} -->`);
 process.stdout.write(lines.join("\n") + "\n");

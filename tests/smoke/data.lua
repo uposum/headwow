@@ -15,13 +15,27 @@ Data.items = {
 	[104] = { "Ring", 4, 62, 61, 3, 2, 300, 2, "Vendor Bob" },
 	[200] = { "Junk", 0, 1, nil, nil, 1, 300, nil, nil, 1 },
 }
--- drops[itemId] = { truncatedCount, npcId, chanceBasisPoints, samples, ... }
+-- drops[itemId] = { leftOut, npcId, chanceBasisPoints, samples, stack x100, ... }
 Data.drops = {
-	[100] = { 2, 1, 50, 1000, 2, 100, 500, 3, 2, 9000, 4, 300, 10 },
-	[200] = { 0, 1, 4000, 1000 },
-	[101] = { 0, 1, 5, 1000 },
-	[103] = { 0, 1, 200, 1000 },
+	[100] = { 2, 1, 50, 1000, 100, 2, 100, 500, 100, 3, 2, 9000, 150, 4, 300, 10, 100 },
+	[200] = { 0, 1, 4000, 1000, 250 },
+	[101] = { 0, 1, 5, 1000, 100 },
+	[103] = { 0, 1, 200, 1000, 100 },
 }
+Data.npcs[5] = { "Vendor Bob", 2 }
+Data.npcLevels = { [1] = 400420, [5] = 300300, [6] = 3 }
+Data.npcTags = { [5] = "Ring Seller" }
+Data.zoneMaps = { [1] = 1448 }
+-- sources[itemId] = { kind, id, a, b, c, ... }: every kind once
+Data.sources = {
+	[104] = { 1, 5, 300, -1, 1, 1, 2, 250, 3, 5, 9, 77, 0, 0, 0, 10, 88, 0, 0, 0 },
+	[100] = { 2, 2, 5000, 800, 150, 3, 3, 120, 40, 100, 4, 900, 9600, 150000, 100, 5, 901, 9900, 59000, 200,
+	          6, 902, 1500, 300, 100, 7, 3, 3, 290000, 333, 8, 104, 220, 1100, 100 },
+}
+Data.spawns = { [5] = { 1448, 2, 400600, 410615 }, [2] = { 1447, 1, 300300 } }
+Data.objects = { [900] = { "Copper Vein", 3 }, [901] = { "Silverleaf", 1 }, [902] = { "Battered Chest", 2 } }
+Data.quests = { [77] = { "A Ring for Bob", 60 } }
+Data.spells = { [88] = { "Ring Making", 150 } }
 
 local SPAWNS = {
 	[1] = { [361] = { { 40, 60 }, { 41, 61 }, { 42, 62 } } },

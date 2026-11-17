@@ -4,7 +4,7 @@
 -- "Show on map" makes an item the tracked one (saved across sessions). Its pins show while
 -- HeadWow.db.mapPins is on; with OpenMap that switch is a toggle in OpenMap's own menu.
 --
--- With QuestieDB installed, the NPCs that drop the item are pinned on their spawn points
+-- With spawn points (the snapshot's, else QuestieDB's), the NPCs that drop the item are pinned on their spawn points
 -- (rings colored by drop chance). NPCs without spawn data get one pin per zone instead, which
 -- lists them. The same spawn pins show an NPC's page ("Show on map") and, optionally, every
 -- mob that drops a wishlist item.
@@ -101,8 +101,15 @@ function Map:ResolveZone(zoneIdx)
 	self:BuildLookup()
 	local cached = self.zoneCache[zoneIdx]
 	if cached == nil then
-		local name = Data.zones[zoneIdx]
-		cached = name and self.byName[name:lower()] or false
+		-- the snapshot's own map ID for the zone first, else the zone's name
+		local known = Data.zoneMaps[zoneIdx]
+		local info = known and C_Map.GetMapInfo(known)
+		if info then
+			cached = { mapID = known, mapType = info.mapType }
+		else
+			local name = Data.zones[zoneIdx]
+			cached = name and self.byName[name:lower()] or false
+		end
 		self.zoneCache[zoneIdx] = cached
 	end
 	if cached then return cached.mapID, cached.mapType end
@@ -173,7 +180,7 @@ end
 ---------------------------------------------------------------------------
 
 -- An item's drop sources, for the map:
---  spawnSources: the NPCs with spawn points (QuestieDB), pinned where they stand
+--  spawnSources: the NPCs with spawn points (snapshot or QuestieDB), pinned where they stand
 --  zones:        by world map zone (snapshot zones), every NPC in `npcs`; the NPCs without
 --                spawn points in `unpinned`, which get one pin for the zone
 --  targets:      mapID -> best chance there, the places the view can be framed on
@@ -375,7 +382,7 @@ function Map:ShowItem(itemID, focusZoneIdx, focusMapID)
 	end
 end
 
--- Shows an NPC's spawn points (QuestieDB) on the map, framed on focusMapID or on the zone
+-- Shows an NPC's spawn points (snapshot or QuestieDB) on the map, framed on focusMapID or on the zone
 -- where it has the most. Without spawn data, the map goes to the NPC's zones instead.
 function Map:ShowNpc(npcID, focusMapID)
 	local all, total = HW:GetNpcSpawnZones(npcID)

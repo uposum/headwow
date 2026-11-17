@@ -2,15 +2,19 @@
 
 local ADDON_NAME = ...
 
--- Filled by the generated data files (Data\Generated\*.lua and HeadWow_Drops).
-HeadWowData = { items = {}, drops = {}, npcs = {}, zones = {}, slots = {} }
+-- Filled by the generated data files (Data\Generated\*.lua and HeadWow_Drops), see
+-- tools/convert.mjs for the row formats.
+HeadWowData = {
+	items = {}, npcs = {}, npcLevels = {}, npcTags = {}, zones = {}, zoneMaps = {}, slots = {}, -- core
+	drops = {}, sources = {}, spawns = {}, objects = {}, quests = {}, spells = {},             -- HeadWow_Drops
+}
 
 HeadWow = {}
 local HW = HeadWow
 local Data = HeadWowData
 
 -- Item row layout produced by tools/convert.mjs
-HW.F = { NAME = 1, QUALITY = 2, ILVL = 3, REQ = 4, SLOT = 5, SOURCE = 6, SELL = 7, ZONE = 8, FROM = 9, DROPS = 10 }
+HW.F = { NAME = 1, QUALITY = 2, ILVL = 3, REQ = 4, SLOT = 5, SOURCE = 6, SELL = 7, ZONE = 8, FROM = 9, DROPS = 10, BUY = 11 }
 local F = HW.F
 
 HW.SOURCES = {
@@ -18,6 +22,11 @@ HW.SOURCES = {
 	{ bit = 2, label = "Vendor" },
 	{ bit = 4, label = "Quest" },
 	{ bit = 8, label = "Crafted" },
+	{ bit = 16, label = "Skinning" },
+	{ bit = 32, label = "Mining & herbs" },
+	{ bit = 256, label = "Pickpocketing" },
+	{ bit = 128, label = "Fishing" },
+	{ bit = 64, label = "Containers" },
 }
 
 HW.WOWHEAD_BASE = "https://www.wowhead.com/forever/"
@@ -38,6 +47,7 @@ local DEFAULTS = {
 	wishSound = true,
 	farmBelow = 10,      -- gold farming: mobs at least this many levels below you (0 = any)
 	farmElites = false,  -- gold farming: include elites and rares
+	farmSkinning = false, -- gold farming: count what skinning a mob gives
 	farmPrice = "best",  -- gold farming: "best" of vendor and AH, "vendor", "ah"
 	point = nil,         -- saved window position
 	size = nil,          -- saved window size { width, height }
@@ -139,29 +149,109 @@ function HW:EnsureDrops()
 	return true
 end
 
--- Returns a list of { npcID, name, chance (0-100 or nil), samples, zones = {zoneIdx...} } and the
--- number of additional sources Wowhead listed but the snapshot did not include.
+HW.DROP_STRIDE = 4 -- drops[itemID] = { leftOut, npcID, chance bp, samples, stack x100, ... }
+
+local function ZonesOf(row)
+	local zones = {}
+	if row then
+		for z = 2, #row do zones[#zones + 1] = row[z] end
+	end
+	return zones
+end
+
+-- Returns a list of { npcID, name, chance (0-100 or nil), samples, stack (average count per
+-- drop), zones = {zoneIdx...} } and the number of smaller sources (under 0.05%) left out of the
+-- bundle.
 function HW:GetDrops(itemID)
 	if not self:EnsureDrops() then return {}, 0 end
 	local raw = Data.drops[itemID]
 	if not raw then return {}, 0 end
 	local list = {}
-	for i = 2, #raw, 3 do
-		local npcID, bp, samples = raw[i], raw[i + 1], raw[i + 2]
+	for i = 2, #raw, HW.DROP_STRIDE do
+		local npcID, bp, samples, stack = raw[i], raw[i + 1], raw[i + 2], raw[i + 3]
 		local npc = Data.npcs[npcID]
-		local zones = {}
-		if npc then
-			for z = 2, #npc do zones[#zones + 1] = npc[z] end
-		end
 		list[#list + 1] = {
 			npcID = npcID,
 			name = npc and npc[1] or ("NPC " .. npcID),
 			chance = bp >= 0 and bp / 100 or nil,
 			samples = samples,
-			zones = zones,
+			stack = (stack or 100) / 100,
+			zones = ZonesOf(npc),
 		}
 	end
 	return list, raw[1] or 0
+end
+
+---------------------------------------------------------------------------
+-- Every other way to get an item (HeadWow_Drops): vendors, skinning, pickpocketing, mining,
+-- herbs, chests, fishing, containers, quests, recipes
+---------------------------------------------------------------------------
+
+HW.SOURCE_KINDS = {
+	{ kind = 1, key = "vendor", label = "Sold by" },
+	{ kind = 9, key = "quest", label = "Quest reward" },
+	{ kind = 10, key = "crafted", label = "Crafted with" },
+	{ kind = 2, key = "skinned", label = "Skinned from" },
+	{ kind = 3, key = "pickpocketed", label = "Pickpocketed from" },
+	{ kind = 4, key = "mined", label = "Mined from" },
+	{ kind = 5, key = "gathered", label = "Gathered from" },
+	{ kind = 6, key = "object", label = "Found in" },
+	{ kind = 8, key = "container", label = "Contained in" },
+	{ kind = 7, key = "fished", label = "Fished in" },
+}
+local KIND_INFO = {}
+for _, k in ipairs(HW.SOURCE_KINDS) do KIND_INFO[k.kind] = k end
+local NPC_KINDS = { [1] = true, [2] = true, [3] = true }
+local OBJECT_KINDS = { [4] = true, [5] = true, [6] = true }
+
+HW.SOURCE_STRIDE = 5 -- sources[itemID] = { kind, id, a, b, c, ... }
+
+-- Returns { [key] = list } with a list per kind of source the item has (keys from
+-- HW.SOURCE_KINDS), each entry { kind, id, name, zones = {zoneIdx...}, and per kind:
+-- chance, samples, stack (loot) · copper, stock (-1 = unlimited), stack (vendor) · level (quest)
+-- · learnedAt (recipe) }. Vendors come cheapest first, everything else most likely first.
+function HW:GetSources(itemID)
+	local out = {}
+	if not self:EnsureDrops() then return out end
+	local raw = Data.sources[itemID]
+	if not raw then return out end
+	for i = 1, #raw, HW.SOURCE_STRIDE do
+		local kind, id, a, b, c = raw[i], raw[i + 1], raw[i + 2], raw[i + 3], raw[i + 4]
+		local info = KIND_INFO[kind]
+		if info then
+			local entry = { kind = kind, id = id, zones = {} }
+			if NPC_KINDS[kind] then
+				local npc = Data.npcs[id]
+				entry.name, entry.zones, entry.npcID = npc and npc[1] or ("NPC " .. id), ZonesOf(npc), id
+			elseif OBJECT_KINDS[kind] then
+				local object = Data.objects[id]
+				entry.name, entry.zones = object and object[1] or ("Object " .. id), ZonesOf(object)
+			elseif kind == 7 then
+				entry.name, entry.zones = self:GetZoneName(id) or "?", { id }
+			elseif kind == 8 then
+				local item = Data.items[id]
+				entry.name, entry.itemID = item and item[F.NAME] or ("Item " .. id), id
+			elseif kind == 9 then
+				local quest = Data.quests[id]
+				entry.name, entry.level, entry.questID = quest and quest[1] or ("Quest " .. id), quest and quest[2], id
+			elseif kind == 10 then
+				local spell = Data.spells[id]
+				entry.name, entry.learnedAt, entry.spellID = spell and spell[1] or ("Spell " .. id), spell and spell[2], id
+			end
+			if kind == 1 then
+				entry.copper, entry.stock, entry.stack = a, b, c or 1
+			elseif kind ~= 9 and kind ~= 10 then
+				entry.chance, entry.samples, entry.stack = a >= 0 and a / 100 or nil, b, (c or 100) / 100
+			end
+			local list = out[info.key]
+			if not list then
+				list = {}
+				out[info.key] = list
+			end
+			list[#list + 1] = entry
+		end
+	end
+	return out
 end
 
 ---------------------------------------------------------------------------
@@ -374,6 +464,7 @@ function HW:FormatChance(chance)
 	if not chance then return "?" end
 	if chance >= 10 then return string.format("%.0f%%", chance) end
 	if chance >= 1 then return string.format("%.1f%%", chance) end
+	if chance < 0.01 then return "<0.01%" end
 	return string.format("%.2f%%", chance)
 end
 

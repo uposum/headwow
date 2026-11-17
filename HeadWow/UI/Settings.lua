@@ -58,10 +58,10 @@ local function Build()
 
 	Header(layout, "World map")
 	Checkbox(cat, "mapPins", "Tracked item on the map",
-		"Pins where the item you last used \"Show on map\" for drops: the spawn points of the mobs (with Questie installed), else their zones.",
+		"Pins where the item you last used \"Show on map\" for drops: the spawn points of the mobs, else their zones.",
 		function() HW.Map:Refresh() end)
 	Checkbox(cat, "wishMap", "Wishlist mobs on the map",
-		"Pins every spawn of the mobs that drop a wishlist item (pink rings). Needs Questie for spawn points.",
+		"Pins every spawn of the mobs that drop a wishlist item (pink rings).",
 		function() HW.Map:Refresh() end)
 
 	Header(layout, "Wishlist")
