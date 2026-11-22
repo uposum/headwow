@@ -5,8 +5,8 @@ local ADDON_NAME = ...
 -- Filled by the generated data files (Data\Generated\*.lua and HeadWow_Drops), see
 -- tools/convert.mjs for the row formats.
 HeadWowData = {
-	items = {}, npcs = {}, npcLevels = {}, npcTags = {}, zones = {}, zoneMaps = {}, slots = {}, -- core
-	drops = {}, sources = {}, spawns = {}, objects = {}, quests = {}, spells = {},             -- HeadWow_Drops
+	items = {}, npcs = {}, npcLevels = {}, npcTags = {}, npcReact = {}, zones = {}, zoneMaps = {}, slots = {}, -- core
+	drops = {}, sources = {}, spawns = {}, objects = {}, quests = {}, spells = {},                            -- HeadWow_Drops
 }
 
 HeadWow = {}
@@ -35,7 +35,7 @@ HW.FALLBACK_ICON = 134400 -- INV_Misc_QuestionMark
 local DEFAULTS = {
 	tooltip = true,      -- add drop sources to item tooltips
 	tooltipLines = 3,
-	detailTab = "overview", -- item page tab you used last: "overview", "drops" or "farm"
+	detailTab = "overview", -- item page tab you used last: "overview", "drops", "farm" or "vendors"
 	minimapButton = true,
 	minimapAngle = 220,  -- degrees around the minimap
 	mapPins = true,      -- show the tracked item's drop zones on the world map

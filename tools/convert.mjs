@@ -18,6 +18,8 @@
 //   npcs[id]      = { name, zoneIdx, zoneIdx, ... }
 //   npcLevels[id] = minLevel * 10000 + maxLevel * 10 + rank   (just rank when the level is "??")
 //   npcTags[id]   = "General Supplies"
+//   npcReact[id]  = (alliance + 2) * 4 + (horde + 2), each 1 friendly, 0 neutral, -1 hostile (a
+//                   part is 0 when unknown)
 //   zoneMaps[zoneIdx] = uiMapID
 //   drops[itemId] = { leftOut, npcId, chanceBasisPoints, samples, stack x100, npcId, ... }
 //   sources[itemId] = { kind, id, a, b, c, kind, id, a, b, c, ... }   (every way to get it but drops)
@@ -52,8 +54,8 @@ const ROWS_PER_FILE = 4000; // keeps each chunk well below Lua's per-function co
 // (0.05%) up. The smaller ones are counted (leftOut) and the item page says so.
 const TOP_DROPS = 25;
 const MIN_DROP_BP = 5;
-const MAX_SOURCE_ROWS = 25; // per kind and item, best first (vendors: cheapest first); skinning keeps every row,
-                            // since gold farming adds up what each mob gives
+const MAX_SOURCE_ROWS = 25; // per kind and item, best first. Vendors and skinning keep every row: the item
+                            // page lists every vendor, nearest first, and gold farming adds up what each mob gives
 
 const QUALITY = { Poor: 0, Common: 1, Uncommon: 2, Rare: 3, Epic: 4, Legendary: 5, Artifact: 6, Heirloom: 7 };
 const SOURCE_BITS = { Drop: 1, Vendor: 2, Quest: 4, Crafted: 8, Skinning: 16, Gathering: 32, Container: 64, Fishing: 128, Pickpocket: 256 };
@@ -67,6 +69,18 @@ const PAGE_BITS = {
 };
 
 // ---------- helpers ----------
+// An NPC's reaction to [Alliance, Horde] from its Wowhead page: 1 friendly, 0 neutral, -1 hostile.
+// Wowhead leaves the other faction out for many faction NPCs (Thunder Bluff's are [null, 1]), so
+// one friendly to a faction and silent on the other is taken as hostile to it.
+function packReaction(react) {
+  if (!Array.isArray(react)) return undefined;
+  let [a, h] = [react[0], react[1]].map((v) => (v === 1 || v === 0 || v === -1 ? v : null));
+  if (a === null && h === 1) a = -1;
+  if (h === null && a === 1) h = -1;
+  if (a === null && h === null) return undefined;
+  return (a === null ? 0 : a + 2) * 4 + (h === null ? 0 : h + 2);
+}
+
 function luaStr(s) {
   let out = '"';
   for (const ch of String(s)) {
@@ -211,7 +225,7 @@ function convertSchema2() {
         src.push(KIND[key], id, bp(row[1]), row[2] ?? 0, Math.round((row[3] ?? 1) * 100));
       }
     };
-    for (const row of (page.soldBy ?? []).slice(0, MAX_SOURCE_ROWS)) {
+    for (const row of page.soldBy ?? []) {
       src.push(KIND.soldBy, row[0], row[1] ?? 0, row[2] ?? -1, row[3] ?? 1);
       npcUsed.add(row[0]);
     }
@@ -253,6 +267,7 @@ function convertSchema2() {
   const npcRows = [];
   const levelRows = [];
   const tagRows = [];
+  const reactRows = [];
   const spawnRows = [];
   let withSpawns = 0;
   for (const id of [...npcUsed].sort((a, b) => a - b)) {
@@ -267,6 +282,8 @@ function convertSchema2() {
       levelRows.push(`L[${id}]=${rank}`); // a "??" boss
     }
     if (n.tag) tagRows.push(`T[${id}]=${luaStr(n.tag)}`);
+    const react = packReaction(n.react);
+    if (react !== undefined) reactRows.push(`F[${id}]=${react}`);
     if (n.spawns) {
       const flat = [];
       for (const [mapId, points] of Object.entries(n.spawns)) {
@@ -301,7 +318,7 @@ function convertSchema2() {
   const zoneMaps = zones.list.map((name) => byName.get(name));
 
   Object.assign(stats, { schema: 2, withSpawns, objects: usedObjects.size, quests: usedQuests.size, spells: usedSpells.size });
-  return { snapshot: manifest.scrapedAt ?? manifest.date, npcRows, levelRows, tagRows, spawnRows, refRows, zoneMaps };
+  return { snapshot: manifest.scrapedAt ?? manifest.date, npcRows, levelRows, tagRows, reactRows, spawnRows, refRows, zoneMaps };
 }
 
 // ---------- schema 1 (data/items.json) ----------
@@ -332,7 +349,7 @@ function convertSchema1() {
   const npcRows = [...npcs.entries()]
     .sort((a, b) => a[0] - b[0])
     .map(([id, n]) => `N[${id}]=${luaRow([n.name ?? `NPC ${id}`, ...n.zones])}`);
-  return { snapshot: raw.scrapedAt, npcRows, levelRows: [], tagRows: [], spawnRows: [], refRows: [], zoneMaps: [] };
+  return { snapshot: raw.scrapedAt, npcRows, levelRows: [], tagRows: [], reactRows: [], spawnRows: [], refRows: [], zoneMaps: [] };
 }
 
 const out = fs.existsSync(path.join(dataDir, "manifest.json")) ? convertSchema2() : convertSchema1();
@@ -358,7 +375,8 @@ fs.writeFileSync(path.join(coreDir, "Meta.lua"), meta);
 
 const itemFiles = writeChunks(coreDir, "Items", "local I = HeadWowData.items", itemRows);
 const npcFiles = writeChunks(coreDir, "Npcs", "local N = HeadWowData.npcs", out.npcRows);
-const infoFiles = writeChunks(coreDir, "NpcInfo", "local L, T = HeadWowData.npcLevels, HeadWowData.npcTags", [...out.levelRows, ...out.tagRows]);
+const infoFiles = writeChunks(coreDir, "NpcInfo", "local L, T, F = HeadWowData.npcLevels, HeadWowData.npcTags, HeadWowData.npcReact",
+  [...out.levelRows, ...out.tagRows, ...out.reactRows]);
 writeXml(coreDir, ["Meta.lua", ...itemFiles, ...npcFiles, ...infoFiles]);
 
 const dropFiles = writeChunks(dropsDir, "Drops", "local R = HeadWowData.drops", dropRows);
@@ -372,7 +390,7 @@ const size = (dir, prefix) =>
 const mb = (n) => (n / 1e6).toFixed(2) + " MB";
 console.log(`snapshot  ${out.snapshot} (schema ${stats.schema})`);
 console.log(`items     ${itemRows.length} rows; core addon ${mb(size(coreDir))}`);
-console.log(`npcs      ${out.npcRows.length} (levels ${out.levelRows.length}, spawns ${out.spawnRows.length})`);
+console.log(`npcs      ${out.npcRows.length} (levels ${out.levelRows.length}, reactions ${out.reactRows.length}, spawns ${out.spawnRows.length})`);
 console.log(`drops     ${dropRows.length} tables -> ${mb(size(dropsDir, "Drops"))} (${stats.droppedRowsLeftOut} rows under ${MIN_DROP_BP / 100}% left out)`);
 console.log(`sources   ${sourceRows.length} items -> ${mb(size(dropsDir, "Sources"))}; spawns ${mb(size(dropsDir, "Spawns"))}; refs ${mb(size(dropsDir, "Refs"))}`);
 console.log(`zones     ${zones.list.length} (${out.zoneMaps.filter(Boolean).length} with a map ID), slots ${slots.list.length}`);

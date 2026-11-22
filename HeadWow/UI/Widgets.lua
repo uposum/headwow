@@ -205,6 +205,7 @@ end
 --   }, ... },
 --   sort, descending,        the starting sort
 --   onClick(item, button, row), onEnter(item, row),
+--   tint = fn(item),         a color ({ r, g, b, a }) to wash the item's row in, or nil
 --   footer = true,           a line of small print under the table
 --   maxRows,                 cap on rows shown (after sorting)
 --   inset = true,            draw its own inset background
@@ -342,6 +343,17 @@ function HeadWowTableRowMixin:Init(tbl, item, index)
 	self.tbl, self.item, self.index = tbl, item, index
 	self.Stripe:SetShown(index % 2 == 0)
 	self.Icon:Hide()
+	local tint = tbl.spec.tint and tbl.spec.tint(item)
+	if tint then
+		if not self.Tint then
+			self.Tint = self:CreateTexture(nil, "BACKGROUND", nil, 1)
+			self.Tint:SetAllPoints()
+		end
+		self.Tint:SetColorTexture(tint.r, tint.g, tint.b, tint.a or 0.15)
+		self.Tint:Show()
+	elseif self.Tint then
+		self.Tint:Hide()
+	end
 
 	local x = 4
 	for i, column in ipairs(tbl.spec.columns) do

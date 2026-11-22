@@ -24,7 +24,7 @@ HeadWow bundles a fresh snapshot of [Wowhead's WoW Forever](https://www.wowhead.
 
 **Browse**: search items and NPCs by name or ID, with filters for quality, source, slot, and your character (usable by your class, your armor type, your level, NPCs near your level). The home page has shortcuts, what you looked at lately, and tips.
 
-**Item pages**: the game's own tooltip; every way to get the item (dropped by, sold by with price and stock, skinned, pickpocketed, mined, gathered, fished, found in chests and containers, quest rewards, recipes); the best places to farm it and who drops it most often; plus full *Dropped by* and *Where to farm* tables. Vendor and auction prices in the header.
+**Item pages**: the game's own tooltip; every way to get the item (dropped by, sold by with price and stock, skinned, pickpocketed, mined, gathered, fished, found in chests and containers, quest rewards, recipes); the vendors nearest you, the best places to farm it and who drops it most often; plus full *Dropped by*, *Where to farm* and *Sold by* tables. *Sold by* lists every vendor with its zone, price and stock, nearest first, the nearest one you can buy from highlighted and vendors hostile to your faction last. Vendor and auction prices in the header.
 
 **NPC pages**: level, rank, title and what a kill is worth; a 3D model you can turn; every zone it lives in with its densest camp; its loot table with each drop's chance, average stack and value per kill.
 
@@ -92,6 +92,7 @@ The workflow reads the private data repo with a read-only deploy key, stored her
 - **Drop chance**, **kills** and **stacks**: Wowhead's, from players running its client. HeadWow bundles each item's 25 likeliest sources and every other one of 0.05% or more; the *Dropped by* tab says how many smaller ones are left out.
 - **Levels** and **spawn points**: from each NPC's Wowhead page (QuestieDB's for NPCs the snapshot has none for).
 - **Camp**: the densest block of a mob's spawn points, 3×3 cells of 75 yards.
+- **Vendor distance**: in a straight line from you to the vendor's nearest spawn point, so only for vendors on your continent; it updates as you move. Which faction a vendor trades with comes from its Wowhead page.
 - **Per clear**: drops (or gold) to expect from killing every spawn in the camp once: chance × spawns, summed over the mobs there.
 - **Per kill (gold)**: each drop's chance × its average stack × its price: the vendor price, or the AH median minus the 5% cut when the item has a steady market. With *Skinning* ticked, the same over what skinning the mob gives.
 - **Not counted**: coin, kill speed and respawn times, which no data HeadWow has covers. Herb and ore nodes show on item pages, but gathering isn't ranked: the snapshot has no node positions.
@@ -126,6 +127,7 @@ HeadWow/                core addon: items, NPCs and their levels
   Farm.lua              where to farm an item
   Wishlist.lua          wishlist, notable loot, loot alert
   GoldFarm.lua          gold farming values
+  Vendors.lua           who sells an item: faction, distance from you, nearest first
   Map.lua               world map pins and banner (Blizzard's map and OpenMap)
   Integration.lua       item and mob tooltips, Alt-click
   EasyFind.lua          EasyFind integration

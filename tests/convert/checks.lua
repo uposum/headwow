@@ -20,7 +20,7 @@ end
 
 local elwynn, barrens = zoneIdx("Elwynn Forest"), zoneIdx("The Barrens")
 check(D.snapshot == "2026-11-18T05:00:00.000Z", "snapshot date")
-check(D.itemCount == 4, "4 items")
+check(D.itemCount == 5, "5 items")
 
 -- items[id] = { name, quality, itemLevel, requiredLevel, slotIdx, sourceMask, sellCopper, zoneIdx, from, dropRows, buyCopper }
 local i1 = D.items[1]
@@ -51,6 +51,7 @@ check(has(s3, 7, barrens, 0, 290000, 333), "fished in the Barrens")
 check(has(s3, 8, 6307, 8, 1200, 100), "contained in an item")
 check(has(s3, 9, 8, 0, 0, 0) and has(s3, 10, 2881, 0, 0, 0), "a quest reward and a recipe")
 check(D.sources[1] == nil, "no other sources for the tusk")
+check(#D.sources[5] == 30 * 5 and D.sources[5][#D.sources[5] - 3] == 5030, "every one of 30 vendors kept")
 
 -- NPCs: every one a bundled table points at
 check(D.npcs[113][1] == "Stonetusk Boar" and D.npcs[113][2] == elwynn, "the boar and its zone")
@@ -59,6 +60,12 @@ check(D.npcs[1030] == nil, "an NPC only in left-out rows isn't bundled")
 check(D.npcLevels[113] == 50060 and D.npcLevels[151] == 100100, "levels packed")
 check(D.npcLevels[4018] == 3, "a boss without a level is ??")
 check(D.npcTags[151] == "General Supplies", "vendor title")
+-- npcReact[id] = (alliance + 2) * 4 + (horde + 2), 0 for an unknown part
+check(D.npcReact[113] == 1 * 4 + 1, "the boar is hostile to both factions")
+check(D.npcReact[151] == 3 * 4 + 1, "Brog is friendly to the Alliance, so hostile to the Horde he says nothing on")
+check(D.npcReact[5001] == 1 * 4 + 3, "a Horde vendor silent on the Alliance is hostile to it")
+check(D.npcReact[5002] == 2 * 4 + 0, "neutral to the Alliance, unknown to the Horde")
+check(D.npcReact[5003] == nil and D.npcReact[4018] == nil, "no reaction known")
 check(D.spawns[113][1] == 1429 and D.spawns[113][2] == 2 and D.spawns[113][3] == 469357 and D.spawns[113][4] == 474999,
 	"spawns packed on the game's map ID (y 100 kept below 1000)")
 check(D.zoneMaps[elwynn] == 1429 and D.zoneMaps[barrens] == nil, "zone map IDs where the snapshot has them")

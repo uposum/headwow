@@ -1,8 +1,10 @@
--- Item page: header (icon, name, star, facts, prices), and three tabs:
---   Overview       the game's own tooltip, with cards beside it: how to get the item, the best
---                  places to farm it, and the NPCs that drop it most often
+-- Item page: header (icon, name, star, facts, prices), and four tabs:
+--   Overview       the game's own tooltip, with cards beside it: how to get the item, the
+--                  vendors nearest you, the best places to farm it, and the NPCs that drop it
+--                  most often
 --   Dropped by     every NPC that drops it (sortable)
 --   Where to farm  zones ranked by drops per clear of their best camp
+--   Sold by        every vendor, nearest first, the nearest you can buy from highlighted
 
 local HW = HeadWow
 local UI = HW.UI
@@ -30,10 +32,21 @@ local ICONS = {
 	fished = "Interface\\Icons\\Trade_Fishing",
 }
 
-local TAB_KEYS = {}                  -- tabID -> "overview" | "drops" | "farm"
+local VENDOR_CARD_ROWS = 5           -- nearest vendors on the Overview; 2 when the drop cards are there too
+local VENDOR_CARD_ROWS_WITH_DROPS = 2
+local NEAREST_TINT = { r = 0.2, g = 1, b = 0.2, a = 0.12 }
+local NEAREST_COLOR, HOSTILE_COLOR = "|cff40ff40", "|cffff5555"
+local MOVE_CHECK = 1                 -- seconds between looks at where you are
+local MOVE_YARDS = 15                -- how far you move before the vendors are measured again
+
+local TAB_KEYS = {}                  -- tabID -> "overview" | "drops" | "farm" | "vendors"
 local TAB_IDS = {}                   -- key -> tabID
 local ui = {}
 local itemID
+local itemHasDrops = false
+local vendors = {}                   -- HW:GetVendors(itemID)
+local nearestVendor, vendorFrom      -- the nearest one you can buy from; where you were then
+local mapVendor                      -- whom "Show on map" shows for an item that doesn't drop
 
 ---------------------------------------------------------------------------
 -- Overview
@@ -51,14 +64,28 @@ local function CreateOverview(parent)
 	column:SetHeight(1)
 	page.Column = column
 	page.Sources = UI.CreateCard(column, "How to get it")
-	page.Sources:SetPoint("TOPLEFT")
-	page.Sources:SetPoint("TOPRIGHT")
+	page.Vendors = UI.CreateCard(column, "Nearest vendors")
 	page.Spots = UI.CreateCard(column, "Best places to farm")
-	page.Spots:SetPoint("TOPLEFT", page.Sources, "BOTTOMLEFT", 0, -8)
-	page.Spots:SetPoint("TOPRIGHT", page.Sources, "BOTTOMRIGHT", 0, -8)
 	page.Droppers = UI.CreateCard(column, "Dropped most often by")
-	page.Droppers:SetPoint("TOPLEFT", page.Spots, "BOTTOMLEFT", 0, -8)
-	page.Droppers:SetPoint("TOPRIGHT", page.Spots, "BOTTOMRIGHT", 0, -8)
+
+	-- The shown cards, stacked down the column.
+	function page:StackCards()
+		local above
+		for _, card in ipairs({ page.Sources, page.Vendors, page.Spots, page.Droppers }) do
+			if card:IsShown() then
+				card:ClearAllPoints()
+				if above then
+					card:SetPoint("TOPLEFT", above, "BOTTOMLEFT", 0, -8)
+					card:SetPoint("TOPRIGHT", above, "BOTTOMRIGHT", 0, -8)
+				else
+					card:SetPoint("TOPLEFT")
+					card:SetPoint("TOPRIGHT")
+				end
+				above = card
+			end
+		end
+	end
+	page:StackCards()
 
 	-- The cards sit right of the tooltip, or across the page while there is none (the game
 	-- hasn't got the item's data yet, or doesn't know the item).
@@ -133,13 +160,164 @@ local function ZoneNames(zones, max)
 	return table.concat(names, ", ")
 end
 
+---------------------------------------------------------------------------
+-- Vendors
+---------------------------------------------------------------------------
+
+local function PlayerFactionName()
+	local _, name = UnitFactionGroup("player")
+	return name or "your faction"
+end
+
+local function VendorName(v)
+	return v.reaction == -1 and (HOSTILE_COLOR .. v.name .. "|r") or v.name
+end
+
+local function VendorPrice(v)
+	if v.copper <= 0 then return "|cff808080other currency|r" end
+	local text = GetMoneyString(v.copper, true)
+	if v.stack > 1 then text = text .. " for " .. v.stack end
+	return text
+end
+
+-- Yards for a vendor near you (the nearest you can buy from in green), else its continent.
+local function VendorDistance(v)
+	if v.yards then
+		local text = HW:FormatDistance(v.yards)
+		return v.nearest and (NEAREST_COLOR .. text .. "|r") or text
+	end
+	return "|cff808080" .. (v.continent or "?") .. "|r"
+end
+
+local function ShowVendorTooltip(owner, v)
+	local tip = GameTooltip
+	tip:SetOwner(owner, "ANCHOR_RIGHT")
+	HW:FillNpcTooltip(tip, v.npcID)
+	GameTooltip_AddBlankLineToTooltip(tip)
+	GameTooltip_AddColoredDoubleLine(tip, "Price", VendorPrice(v), NORMAL_FONT_COLOR, HIGHLIGHT_FONT_COLOR)
+	if v.stock > 0 then
+		GameTooltip_AddColoredDoubleLine(tip, "Limited stock", tostring(v.stock), NORMAL_FONT_COLOR, HIGHLIGHT_FONT_COLOR)
+	end
+	if v.yards then
+		GameTooltip_AddColoredDoubleLine(tip, v.nearest and "Nearest vendor" or "Distance", HW:FormatDistance(v.yards),
+			NORMAL_FONT_COLOR, HIGHLIGHT_FONT_COLOR)
+	end
+	if v.reaction == -1 then
+		GameTooltip_AddErrorLine(tip, "Hostile to the " .. PlayerFactionName() .. ": won't trade with you.", true)
+	end
+	GameTooltip_AddBlankLineToTooltip(tip)
+	GameTooltip_AddInstructionLine(tip, "Click: NPC page  ·  Right-click: map and more")
+	tip:Show()
+	HW:AttachNpcCard(tip, v.npcID)
+end
+
+local function VendorClick(v, button, owner)
+	if button == "RightButton" then
+		HW:ShowNpcContextMenu(owner, v.npcID, nil, v.mapID or v.homeMapID)
+	else
+		HW:ShowNpc(v.npcID)
+	end
+end
+
+local function ShowVendorsTab()
+	ui.Tabs:SetTab(TAB_IDS.vendors, true)
+end
+
+-- "How to get it": one row for all the vendors, with the lowest price.
+local function VendorSummaryRow()
+	local low, high
+	for _, v in ipairs(vendors) do
+		if v.unitPrice then
+			if not low or v.unitPrice < low.unitPrice then low = v end
+			if not high or v.unitPrice > high.unitPrice then high = v end
+		end
+	end
+	local price = low and ((high.unitPrice > low.unitPrice and "from " or "") .. VendorPrice(low)) or VendorPrice(vendors[1])
+	return {
+		icon = ICONS.vendor,
+		text = #vendors == 1 and ("Sold by " .. VendorName(vendors[1])) or ("Sold by " .. #vendors .. " vendors"),
+		value = price,
+		onClick = ShowVendorsTab,
+		onEnter = function(self)
+			GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+			GameTooltip_SetTitle(GameTooltip, "Sold by")
+			GameTooltip_AddNormalLine(GameTooltip, "Every vendor with its zone, price and stock, the nearest first.", true)
+			GameTooltip_AddInstructionLine(GameTooltip, "Click: see them all")
+			GameTooltip:Show()
+		end,
+	}
+end
+
+-- The Overview's vendor card: the nearest ones you can buy from, then a link to them all.
+local function VendorCardRows(max)
+	local rows = {}
+	for _, v in ipairs(vendors) do
+		if #rows >= max then break end
+		if v.reaction ~= -1 then
+			rows[#rows + 1] = {
+				npcID = v.npcID,
+				text = v.name .. (v.zoneText ~= "" and ("  |cff808080" .. v.zoneText .. "|r") or ""),
+				value = VendorDistance(v),
+				onClick = function(button, self) VendorClick(v, button, self) end,
+				onEnter = function(self) ShowVendorTooltip(self, v) end,
+			}
+		end
+	end
+	local shown = #rows
+	if shown == 0 then rows[1] = { text = "All of them are hostile to the " .. PlayerFactionName() .. ".", dim = true } end
+	if #vendors > shown then
+		rows[#rows + 1] = { text = string.format("All %d vendors...", #vendors), dim = true, onClick = ShowVendorsTab }
+	end
+	return rows
+end
+
+local function UpdateVendorCard()
+	local card = ui.Overview.Vendors
+	card:SetTitle(nearestVendor and "Nearest vendors" or "Vendors")
+	card:SetRows(VendorCardRows(itemHasDrops and VENDOR_CARD_ROWS_WITH_DROPS or VENDOR_CARD_ROWS))
+end
+
+local function VendorFooter()
+	local hostile, limited = false, false
+	for _, v in ipairs(vendors) do
+		if v.reaction == -1 then hostile = true end
+		if v.stock > 0 then limited = true end
+	end
+	local parts = { #vendors == 1 and "1 vendor." or (#vendors .. " vendors.") }
+	if vendorFrom then
+		parts[#parts + 1] = "Distance: in a straight line to the vendor's nearest spot, green for the nearest you can buy from;"
+			.. " vendors elsewhere show their continent."
+	else
+		parts[#parts + 1] = "No distances here: the game doesn't say where you are."
+	end
+	if hostile then parts[#parts + 1] = "Red: hostile to the " .. PlayerFactionName() .. ", listed last." end
+	if limited then parts[#parts + 1] = "Stock: how many a vendor with limited stock has before it restocks." end
+	return table.concat(parts, " ")
+end
+
+-- Whom "Show on map" shows when the item doesn't drop: the nearest vendor you can buy from, else
+-- the first one with a known spot.
+local function UpdateMapVendor()
+	mapVendor = nearestVendor
+	if mapVendor then return end
+	for _, v in ipairs(vendors) do
+		if v.reaction ~= -1 and v.homeMapID then
+			mapVendor = v
+			return
+		end
+	end
+end
+
 -- A row per way to get the item (from its Wowhead page): the best entry, "and N more", and the
--- rest in the tooltip. Vendors, skinning and pickpocketing open the NPC; containers the item.
+-- rest in the tooltip. Vendors get one row that opens the Sold by tab; skinning and pickpocketing
+-- open the NPC; containers the item.
 local function PageSourceRows(sources)
 	local rows = {}
 	for _, kind in ipairs(HW.SOURCE_KINDS) do
 		local list = sources[kind.key]
-		if list and #list > 0 then
+		if kind.key == "vendor" then
+			if #vendors > 0 then rows[#rows + 1] = VendorSummaryRow() end
+		elseif list and #list > 0 then
 			local best = list[1]
 			local more = #list > 1 and (" |cff808080and " .. (#list - 1) .. " more|r") or ""
 			local zone = ZoneNames(best.zones, 1)
@@ -301,6 +479,23 @@ local DROPS_SPEC = {
 	end,
 }
 
+local VENDORS_SPEC = {
+	columns = {
+		{ title = "Vendor", icon = function(v) return "npc", v.npcID end, text = VendorName, sort = UI.ByText("name") },
+		{ title = "Zone", width = 150, font = "GameFontDisableSmall", text = function(v) return v.zoneText end, sort = UI.ByText("zoneText") },
+		{ title = "Price", width = 120, align = "RIGHT", text = VendorPrice,
+		  sort = function(a, b) return (a.unitPrice or math.huge) < (b.unitPrice or math.huge) end },
+		{ title = "Stock", width = 56, align = "RIGHT", font = "GameFontDisableSmall",
+		  text = function(v) return v.stock > 0 and tostring(v.stock) or "" end,
+		  sort = function(a, b) return (a.stock > 0 and a.stock or math.huge) < (b.stock > 0 and b.stock or math.huge) end },
+		{ title = "Distance", width = 110, align = "RIGHT", text = VendorDistance, sort = HW.CompareVendors },
+	},
+	sort = 5, footer = true,
+	tint = function(v) return v.nearest and NEAREST_TINT or nil end,
+	onClick = VendorClick,
+	onEnter = function(v, row) ShowVendorTooltip(row, v) end,
+}
+
 local FARM_SPEC = {
 	columns = {
 		{ title = "Zone", icon = function() return "texture", ICONS.zone end, text = function(s) return s.name end, sort = UI.ByText("name") },
@@ -395,12 +590,32 @@ function ItemView:Create(host)
 	wowhead:SetPoint("BOTTOMRIGHT", 0, 0)
 	local link = UI.Button(view, "Link in chat", function() HW:InsertItemLink(itemID) end, 110)
 	link:SetPoint("RIGHT", wowhead, "LEFT", -4, 0)
-	local map = UI.Button(view, "Show on map", function() HW.Map:ShowItem(itemID) end, 120)
+	local map = UI.Button(view, "Show on map", function()
+		if itemHasDrops then
+			HW.Map:ShowItem(itemID)
+		elseif mapVendor then
+			HW.Map:ShowNpc(mapVendor.npcID, mapVendor.mapID or mapVendor.homeMapID)
+		end
+	end, 120)
 	map:SetPoint("RIGHT", link, "LEFT", -4, 0)
 	UI.SetTooltip(map, "Show on map", function(tip)
-		GameTooltip_AddNormalLine(tip, "Pins where the mobs that drop it stand, ringed by drop chance.", true)
+		if itemHasDrops or not mapVendor then
+			GameTooltip_AddNormalLine(tip, "Pins where the mobs that drop it stand, ringed by drop chance.", true)
+		else
+			GameTooltip_AddNormalLine(tip, "Where " .. mapVendor.name .. " stands: "
+				.. (mapVendor.nearest and "the nearest vendor you can buy from." or "a vendor that sells it."), true)
+		end
 	end)
 	ui.MapButton = map
+
+	-- Vendor distances follow you around.
+	local since = 0
+	view:SetScript("OnUpdate", function(_, elapsed)
+		since = since + elapsed
+		if since < MOVE_CHECK then return end
+		since = 0
+		ItemView:UpdateDistances()
+	end)
 
 	-- Tabs over the body
 	local tabs = CreateFrame("Frame", nil, view, "HeadWowTopTabSystemTemplate")
@@ -417,10 +632,13 @@ function ItemView:Create(host)
 	ui.Drops:SetAllPoints()
 	ui.Farm = UI.CreateTable(body, FARM_SPEC)
 	ui.Farm:SetAllPoints()
+	ui.Vendors = UI.CreateTable(body, VENDORS_SPEC)
+	ui.Vendors:SetAllPoints()
 
-	local pages = { overview = ui.Overview, drops = ui.Drops, farm = ui.Farm }
-	for _, key in ipairs({ "overview", "drops", "farm" }) do
-		local id = tabs:AddTab(({ overview = "Overview", drops = "Dropped by", farm = "Where to farm" })[key])
+	local pages = { overview = ui.Overview, drops = ui.Drops, farm = ui.Farm, vendors = ui.Vendors }
+	local titles = { overview = "Overview", drops = "Dropped by", farm = "Where to farm", vendors = "Sold by" }
+	for _, key in ipairs({ "overview", "drops", "farm", "vendors" }) do
+		local id = tabs:AddTab(titles[key])
 		TAB_KEYS[id], TAB_IDS[key] = key, id
 	end
 	tabs:SetTabSelectedCallback(function(tabID, isUserAction)
@@ -503,17 +721,28 @@ function ItemView:Refresh()
 		end
 	end
 	local hasSpots = #spots > 0
+	itemHasDrops = hasDrops
+	vendors, nearestVendor, vendorFrom = HW:GetVendors(itemID)
+	local hasVendors = #vendors > 0
+	UpdateMapVendor()
 
 	-- Overview
 	local overview = ui.Overview
 	overview.Sources:SetRows(SourceRows(row, drops), "No source known.")
+	overview.Vendors:SetShown(hasVendors)
+	if hasVendors then UpdateVendorCard() end
 	overview.Spots:SetShown(hasDrops)
 	overview.Droppers:SetShown(hasDrops)
 	if hasDrops then
 		overview.Spots:SetRows(SpotRows(spots), "No drop chances known.")
 		overview.Droppers:SetRows(DropperRows(drops))
 	end
+	overview:StackCards()
 	if overview:IsVisible() then overview:ShowTooltip(itemID) end
+
+	-- Sold by
+	ui.Vendors:SetData(vendors, "No vendor sells this item.")
+	ui.Vendors:SetFooter(hasVendors and VendorFooter() or "")
 
 	-- Dropped by
 	ui.Drops:SetData(drops, "No drop data for this item.")
@@ -533,11 +762,34 @@ function ItemView:Refresh()
 	UI.SetTabText(tabs, TAB_IDS.drops, hasDrops and ("Dropped by  " .. HW:GrayText(#drops)) or "Dropped by")
 	tabs:SetTabEnabled(TAB_IDS.drops, hasDrops, "No drop data for this item")
 	tabs:SetTabEnabled(TAB_IDS.farm, hasSpots, "No drop chances known for this item")
+	UI.SetTabText(tabs, TAB_IDS.vendors, hasVendors and ("Sold by  " .. HW:GrayText(#vendors)) or "Sold by")
+	tabs:SetTabEnabled(TAB_IDS.vendors, hasVendors, "No vendor sells this item")
 	local preferred = HW.db.detailTab
 	local available = (preferred == "drops" and hasDrops) or (preferred == "farm" and hasSpots)
+		or (preferred == "vendors" and hasVendors)
 	tabs:SetTab(available and TAB_IDS[preferred] or TAB_IDS.overview)
 
-	ui.MapButton:SetEnabled(hasDrops)
+	ui.MapButton:SetEnabled(hasDrops or mapVendor ~= nil)
+end
+
+-- Measures the vendors again once you've moved (or changed continent) since the last time.
+function ItemView:UpdateDistances()
+	if not (itemID and #vendors > 0) then return end
+	local from = HW:GetPlayerPosition()
+	local last = vendorFrom
+	if from and last and from.continent == last.continent then
+		local dx, dy = from.x - last.x, from.y - last.y
+		if dx * dx + dy * dy < MOVE_YARDS * MOVE_YARDS then return end
+	elseif not from and not last then
+		return
+	end
+	vendorFrom = from
+	nearestVendor = HW:UpdateVendors(vendors, from)
+	UpdateMapVendor()
+	ui.Vendors:Refresh()
+	ui.Vendors:SetFooter(VendorFooter())
+	if ui.Overview.Vendors:IsShown() then UpdateVendorCard() end
+	ui.MapButton:SetEnabled(itemHasDrops or mapVendor ~= nil)
 end
 
 function ItemView:UpdateStar()

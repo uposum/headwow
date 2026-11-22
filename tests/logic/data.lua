@@ -28,6 +28,17 @@ Data.spawns = { [5] = { 1448, 2, 400600, 410615 } }
 -- skinned from the bear (50%, 1.5 at a time) and a reward of quest 77
 Data.sources = { [104] = { 1, 5, 300, -1, 1, 2, 2, 5000, 800, 150, 9, 77, 0, 0, 0 } }
 Data.quests = { [77] = { "Cloak Quest", 60 } }
+-- The wand is sold by Bob (5s), a Horde vendor (4s, 2 in stock) right by him, a vendor on another
+-- continent (4.5s for 5) and one with no known spawn (another currency).
+-- npcReact[id] = (alliance + 2) * 4 + (horde + 2): Bob friendly to both, the Horde vendor hostile
+-- to the Alliance, the far one friendly to the Alliance only, the lost one neutral to the Alliance.
+Data.npcs[6] = { "Horde Vendor", 1 }
+Data.npcs[7] = { "Far Vendor", 3 }
+Data.npcs[8] = { "Lost Vendor", 2 }
+Data.npcReact = { [5] = 3 * 4 + 3, [6] = 1 * 4 + 3, [7] = 3 * 4 + 1, [8] = 2 * 4 + 0 }
+Data.sources[105] = { 1, 5, 500, -1, 1, 1, 6, 400, 2, 1, 1, 7, 450, -1, 5, 1, 8, 0, -1, 1 }
+Data.spawns[6] = { 1448, 1, 400550 } -- Felwood 40, 55
+Data.spawns[7] = { 1429, 1, 500500 } -- Elwynn 50, 50
 HeadWow.db = { wishlist = {}, tooltipLines = 3, mobTooltipLines = 4, wishAlert = true }
 -- the Map module's zone lookups, without the world map
 HeadWow.Map = {

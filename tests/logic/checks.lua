@@ -186,6 +186,49 @@ check(src.skinned and src.skinned[1].npcID == 2 and src.skinned[1].chance == 50 
 check(src.quest and src.quest[1].name == "Cloak Quest" and src.quest[1].level == 60, "reward of the cloak quest")
 check(next(HW:GetSources(100)) == nil, "no other sources for the plate")
 
+-- Vendors. A mock world: Felwood is 1000 yards square from 0,0 and Azshara from 5000,0 on
+-- continent 1, Elwynn on continent 0; you stand in Felwood at 40, 50.
+check(HW:GetNpcReaction(6, "Alliance") == -1 and HW:GetNpcReaction(6, "Horde") == 1, "the Horde vendor's reactions")
+check(HW:GetNpcReaction(8, "Alliance") == 0 and HW:GetNpcReaction(8, "Horde") == nil, "neutral, and unknown")
+check(HW:GetNpcReaction(1, "Alliance") == nil, "no reaction known for the wolf")
+local OFFSETS = { [1448] = { 1, 0 }, [1447] = { 1, 5000 }, [1429] = { 0, 0 } }
+CreateVector2D = function(x, y) return { GetXY = function() return x, y end } end
+C_Map.GetWorldPosFromMapPos = function(mapID, pos)
+	local o = OFFSETS[mapID]
+	if not o then return end
+	local x, y = pos:GetXY()
+	return o[1], CreateVector2D(o[2] + x * 1000, y * 1000)
+end
+C_Map.GetBestMapForUnit = function() return 1448 end
+C_Map.GetPlayerMapPosition = function() return CreateVector2D(0.4, 0.5) end
+local faction = "Alliance"
+UnitFactionGroup = function() return faction, faction end
+local here = HW:GetPlayerPosition()
+check(here and here.continent == 1 and math.abs(here.x - 400) < 1e-9 and math.abs(here.y - 500) < 1e-9, "your world position")
+local yards, mapID = HW:GetNpcDistance(5, here)
+check(yards and math.abs(yards - 100) < 1e-9 and mapID == 1448, "Bob's nearest spawn (of 2) is 100 yards off")
+check(HW:GetNpcDistance(7, here) == nil, "no distance to a vendor on another continent")
+check(HW:FormatDistance(100) == "100 yd" and HW:FormatDistance(2) == "5 yd" and HW:FormatDistance(1234) == "1230 yd",
+	"distance text")
+local vendors, nearest, from = HW:GetVendors(105)
+local order = {}
+for i, v in ipairs(vendors) do order[i] = v.npcID end
+check(table.concat(order, ",") == "5,7,8,6", "Alliance: Bob, the far one, the lost one, the hostile one last")
+check(nearest and nearest.npcID == 5 and vendors[1].nearest and not vendors[4].nearest and from ~= nil,
+	"Bob is the nearest you can buy from; the hostile one 50 yards off isn't")
+check(vendors[4].reaction == -1 and math.abs(vendors[4].yards - 50) < 1e-9, "the hostile vendor still has a distance")
+check(vendors[2].homeMapID == 1429 and vendors[2].yards == nil and vendors[2].unitPrice == 90 and vendors[2].stack == 5,
+	"the far vendor: its map, 4.5s for 5")
+check(vendors[3].homeMapID == nil and vendors[3].unitPrice == nil and vendors[3].zoneText == "Azshara",
+	"the lost vendor: no spawns, another currency, its zone")
+check(vendors[4].stock == 2 and vendors[1].stock == -1, "stock")
+faction = "Horde"
+vendors, nearest = HW:GetVendors(105)
+check(nearest and nearest.npcID == 6 and vendors[1].npcID == 6 and vendors[2].npcID == 5, "Horde: the Horde vendor is nearest")
+nearest = HW:UpdateVendors(vendors, { continent = 1, x = 400, y = 615 })
+check(nearest.npcID == 5 and vendors[1].npcID == 5, "walk to Bob's second spawn: he's nearest now")
+check(HW:UpdateVendors(vendors, nil) == nil and vendors[1].yards == nil, "nowhere known: no distances, no nearest")
+
 for _, msg in ipairs(failed) do print("FAIL " .. msg) end
 print(("logic: %d checks passed, %d failed"):format(passed, #failed))
 if #failed > 0 then error(#failed .. " logic checks failed", 0) end

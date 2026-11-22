@@ -38,7 +38,7 @@ suite("logic", () => {
   runFile(path.join(here, "logic", "mocks.lua"), "mocks.lua");
   runFile(path.join(addon, "Core.lua"), "Core.lua", coreName);
   runFile(path.join(here, "logic", "data.lua"), "data.lua");
-  for (const f of ["Search.lua", "NPC.lua", "Farm.lua", "Wishlist.lua", "GoldFarm.lua"]) runFile(path.join(addon, f), f);
+  for (const f of ["Search.lua", "NPC.lua", "Farm.lua", "Wishlist.lua", "GoldFarm.lua", "Vendors.lua"]) runFile(path.join(addon, f), f);
   runFile(path.join(here, "logic", "checks.lua"), "checks.lua");
 });
 
@@ -51,7 +51,7 @@ suite("convert", () => {
     const res = spawnSync(process.execPath, [path.join(here, "..", "tools", "convert.mjs"), path.join(tmp, "snapshot"), out], { encoding: "utf8" });
     if (res.status !== 0) throw new Error(`convert.mjs failed:\n${res.stderr}`);
     const { run, runFile } = newLua();
-    run("HeadWowData = { items = {}, npcs = {}, npcLevels = {}, npcTags = {}, zones = {}, zoneMaps = {}, slots = {}, "
+    run("HeadWowData = { items = {}, npcs = {}, npcLevels = {}, npcTags = {}, npcReact = {}, zones = {}, zoneMaps = {}, slots = {}, "
       + "drops = {}, sources = {}, spawns = {}, objects = {}, quests = {}, spells = {} }", "init");
     for (const dir of [path.join(out, "HeadWow", "Data", "Generated"), path.join(out, "HeadWow_Drops", "Generated")]) {
       const xml = fs.readFileSync(path.join(dir, "Data.xml"), "utf8");

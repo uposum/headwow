@@ -142,6 +142,28 @@ step("item with every source", function() HW:ShowItem(100) end)
 Poke("item 100 sources")
 step("item with vendor, quest, recipe", function() HW:ShowItem(104) end)
 Poke("item 104 sources")
+-- Vendors: the Sold by tab, the nearest-vendor card, the map button, moving, Horde, drops too
+local function ClickButton(text)
+	for _, w in ipairs(MOCK.widgets) do
+		if w.__kind == "Button" and w:IsVisible() and w:GetText() == text then MOCK.Fire(w, "OnClick", "LeftButton") return end
+	end
+	error("no visible button " .. text)
+end
+step("vendors: item 104", function() HW:ShowItem(104) end)
+ClickCards("item 104 overview")
+step("vendors: back to item 104", function() HW:ShowItem(104) end)
+AllTabs("item 104")
+ClickRows("item 104 vendors", "RightButton", 4)
+step("vendors: map button", function() HW:ShowItem(104); ClickButton("Show on map") end)
+step("vendors: walk and measure again", function() HW:ShowItem(104); MOCK.playerPos = { 0.40, 0.58 }; HW.ItemView:UpdateDistances() end)
+step("vendors: in an instance", function() MOCK.playerPos = nil; HW.ItemView:UpdateDistances() end)
+step("vendors: still in it", function() HW.ItemView:UpdateDistances() end)
+step("vendors: as Horde", function() MOCK.faction = "Horde"; MOCK.playerPos = { 0.45, 0.5 }; HW:ShowItem(104) end)
+AllTabs("item 104 as Horde")
+step("vendors: map button as Horde", function() ClickButton("Show on map") end)
+step("vendors: item that drops too", function() MOCK.faction = nil; HW.db.detailTab = "overview"; HW:ShowItem(103) end)
+Poke("item 103")
+ClickCards("item 103")
 step("snapshot spawns on the NPC page", function() HW:ShowNpc(2) end)
 Poke("npc 2")
 

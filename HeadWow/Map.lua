@@ -137,6 +137,12 @@ local function GetContinent(mapID)
 	return mapID
 end
 
+-- The name of the continent a map is on ("Kalimdor"), or of the map itself when it's on none.
+function Map:GetContinentName(mapID)
+	local info = C_Map.GetMapInfo(GetContinent(mapID))
+	return info and info.name
+end
+
 local function IsAncestor(ancestorID, mapID)
 	local info = C_Map.GetMapInfo(mapID)
 	while info and info.parentMapID and info.parentMapID ~= 0 do

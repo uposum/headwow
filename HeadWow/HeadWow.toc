@@ -17,6 +17,7 @@ NPC.lua
 Farm.lua
 Wishlist.lua
 GoldFarm.lua
+Vendors.lua
 UI\Templates.xml
 UI\Widgets.lua
 UI\MainFrame.lua

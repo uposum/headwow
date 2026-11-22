@@ -462,12 +462,27 @@ local MAPS = {
 	[1447] = { mapID = 1447, name = "Azshara", mapType = 3, parentMapID = 1414 },
 	[1413] = { mapID = 1413, name = "The Barrens", mapType = 3, parentMapID = 1414 },
 	[1414] = { mapID = 1414, name = "Kalimdor", mapType = 2, parentMapID = 947 },
+	[1429] = { mapID = 1429, name = "Elwynn Forest", mapType = 3, parentMapID = 1415, continent = 0, offset = 0 },
+	[1415] = { mapID = 1415, name = "Eastern Kingdoms", mapType = 2, parentMapID = 947 },
 }
+MAPS[1448].continent, MAPS[1448].offset = 1, 0
+MAPS[1447].continent, MAPS[1447].offset = 1, 5000
+MAPS[1413].continent, MAPS[1413].offset = 1, 10000
+CreateVector2D = function(x, y) return { x = x, y = y, GetXY = function(v) return v.x, v.y end } end
+MOCK.playerPos = { 0.45, 0.5 }
+UnitFactionGroup = function() local f = MOCK.faction or "Alliance"; return f, f end
 C_Map = {
 	GetMapInfo = function(id) return MAPS[id] end,
 	GetAreaInfo = function(id) return ({ [361] = "Felwood", [16] = "Azshara", [17] = "The Barrens" })[id] end,
 	GetMapRectOnMap = function(a, b) if a == b then return 0, 1, 0, 1 end if b == 1414 then return 0.4, 0.6, 0.3, 0.5 end end,
 	GetBestMapForUnit = function() return 1448 end,
+	GetPlayerMapPosition = function() return MOCK.playerPos and CreateVector2D(MOCK.playerPos[1], MOCK.playerPos[2]) end,
+	GetWorldPosFromMapPos = function(mapID, pos)
+		local info = MAPS[mapID]
+		if not (info and info.continent) then return end
+		local x, y = pos:GetXY()
+		return info.continent, CreateVector2D(info.offset + x * 1000, y * 1000)
+	end,
 }
 TooltipDataProcessor = { callbacks = {}, AddTooltipPostCall = function(kind, fn) TooltipDataProcessor.callbacks[kind] = fn end }
 EventUtil = { ContinueOnAddOnLoaded = function(_, fn) fn() end }
